@@ -11,6 +11,8 @@ const NEG_ONE: u16 = MODULUS - 1;
 /// The degree of the polynomial ring over Z/2^13 Z
 pub(crate) const RING_DEG: usize = 256;
 
+const KARATSUBA_THRESHOLD: usize = 128;
+
 /// An element of the ring (Z/2^13 Z)[X] / (X^256 + 1)
 // The coefficients are in order of ascending powers, i.e., `self.0[0]` is the constant term
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
@@ -39,23 +41,22 @@ impl<'a> Mul for &'a RingElem {
 
     // School book multiplication
     fn mul(self, other: &'a RingElem) -> Self::Output {
-        let mut result = [0u16; RING_DEG];
+        let mut result = RingElem::default();
         // Do all the multiplications
         for i in 0..RING_DEG {
-            for j in 0..RING_DEG {
-                // We can multiply and add with wrapping because everything is mod a power of 2
-                let mut prod = self.0[i].wrapping_mul(other.0[j]);
-                let idx = (i + j) % RING_DEG;
-                let idx_is_past_deg = (i + j) >= RING_DEG;
-                // The coeff a·X^{256 + i} equals -a·X^i since X^256 + 1 == 0 in our polyn ring
-                if idx_is_past_deg {
-                    prod = prod.wrapping_mul(NEG_ONE);
-                }
-                result[idx as usize] = result[idx as usize].wrapping_add(prod);
+            for j in 0..(RING_DEG - i) {
+                let idx = i + j;
+                let prod = self.0[i].wrapping_mul(other.0[j]);
+                result.0[idx] = result.0[idx].wrapping_add(prod);
+            }
+            for j in (RING_DEG - i)..RING_DEG {
+                let prod = self.0[i].wrapping_mul(other.0[j]);
+                let idx = i + j - RING_DEG;
+                result.0[idx] = result.0[idx].wrapping_sub(prod);
             }
         }
 
-        RingElem(result)
+        result
     }
 }
 
@@ -92,9 +93,16 @@ fn kara_mul_helper(x: &[u16], y: &[u16]) -> RingElem {
     assert_eq!(x.len(), y.len());
     let n = x.len();
 
-    if n == 1 {
+    // Eventually, we have few enough terms that we should just do schoolbook multiplication
+    if n == KARATSUBA_THRESHOLD {
         let mut ret = RingElem::default();
-        ret.0[0] = x[0].wrapping_mul(y[0]);
+        // n is small enough that there is no wrapping around the ring degree (256)
+        for i in 0..n {
+            for j in 0..n {
+                let prod = x[i].wrapping_mul(y[j]);
+                ret.0[i + j] = ret.0[i + j].wrapping_add(prod);
+            }
+        }
         return ret;
     }
 
