@@ -9,12 +9,18 @@ const MODULUS: u16 = 1 << 13;
 const NEG_ONE: u16 = MODULUS - 1;
 
 /// The degree of the polynomial ring over Z/2^13 Z
-const RING_DEG: usize = 256;
+pub(crate) const RING_DEG: usize = 256;
 
 /// An element of the ring (Z/2^13 Z)[X] / (X^256 + 1)
 // The coefficients are in order of ascending powers, i.e., `self.0[0]` is the constant term
-#[derive(Eq, PartialEq, Debug, Clone)]
-struct RingElem([u16; RING_DEG]);
+#[derive(Eq, PartialEq, Debug, Clone, Copy)]
+pub(crate) struct RingElem([u16; RING_DEG]);
+
+impl Default for RingElem {
+    fn default() -> Self {
+        RingElem([0u16; RING_DEG])
+    }
+}
 
 impl RingElem {
     /// Creates a random ring element
@@ -50,6 +56,66 @@ impl<'a> Mul for &'a RingElem {
         }
 
         RingElem(result)
+    }
+}
+
+fn poly_add(x: &[u16], y: &[u16]) -> Vec<u16> {
+    let outlen = core::cmp::max(x.len(), y.len());
+    let mut ret = vec![0; outlen];
+    for i in 0..outlen {
+        ret[i] = x.get(i).unwrap_or(&0).wrapping_add(*y.get(i).unwrap_or(&0))
+    }
+    ret
+}
+
+fn poly_sub(x: &[u16], y: &[u16]) -> Vec<u16> {
+    let outlen = core::cmp::max(x.len(), y.len());
+    let mut ret = vec![0; outlen];
+    for i in 0..outlen {
+        ret[i] = x.get(i).unwrap_or(&0).wrapping_sub(*y.get(i).unwrap_or(&0))
+    }
+    ret
+}
+
+fn kara_mul(x: &[u16], y: &[u16]) -> Vec<u16> {
+    assert_eq!(x.len(), y.len());
+    let n = x.len();
+
+    if n == 1 {
+        return vec![x[0].wrapping_mul(y[0])];
+    }
+
+    let mid = n / 2;
+    let xl = &x[..mid];
+    let xh = &x[mid..];
+    let yl = &y[..mid];
+    let yh = &y[mid..];
+
+    let z0 = kara_mul(xl, yl);
+    let mut z2 = kara_mul(xh, yh);
+    let z3 = kara_mul(&poly_add(xl, xh), &poly_add(yl, yh));
+    let mut z1 = poly_sub(&poly_sub(&z3, &z2), &z0);
+
+    // Compute z0 + z1*X^mid + z2*X^(2mid)
+    for _ in 0..mid {
+        z1.insert(0, 0);
+    }
+    for _ in 0..2 * mid {
+        z2.insert(0, 0);
+    }
+    let res = poly_add(&poly_add(&z0, &z1), &z2);
+
+    // Now normalize
+    if res.len() < RING_DEG {
+        res
+    } else {
+        let mut ret = vec![0u16; RING_DEG];
+        for i in 0..res.len() {
+            let is_neg = (i / RING_DEG) % 2 == 1;
+            let coeff = if is_neg { NEG_ONE } else { 1u16 };
+            ret[i % RING_DEG] = ret[i % RING_DEG].wrapping_add(coeff.wrapping_mul(res[i]));
+        }
+        ret
     }
 }
 
@@ -105,5 +171,17 @@ mod test {
             assert_eq!(prod_1, prod_2);
             assert_eq!(sum_1, sum_2);
         }
+    }
+
+    #[test]
+    fn karatsuba() {
+        let mut rng = thread_rng();
+
+        let a = RingElem::rand(&mut rng);
+        let b = RingElem::rand(&mut rng);
+
+        let mut k = RingElem::default();
+        k.0.copy_from_slice(&kara_mul(&a.0, &b.0));
+        assert_eq!(k, &a * &b);
     }
 }
