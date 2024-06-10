@@ -14,7 +14,7 @@ pub(crate) const RING_DEG: usize = 256;
 /// An element of the ring (Z/2^13 Z)[X] / (X^256 + 1)
 // The coefficients are in order of ascending powers, i.e., `self.0[0]` is the constant term
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
-pub(crate) struct RingElem([u16; RING_DEG]);
+pub struct RingElem([u16; RING_DEG]);
 
 impl Default for RingElem {
     fn default() -> Self {
@@ -24,7 +24,7 @@ impl Default for RingElem {
 
 impl RingElem {
     /// Creates a random ring element
-    pub(crate) fn rand(rng: &mut impl CryptoRngCore) -> Self {
+    pub fn rand(rng: &mut impl CryptoRngCore) -> Self {
         let mut result = [0; RING_DEG];
         for i in 0..RING_DEG {
             let coeff = rng.next_u32() % MODULUS as u32;
@@ -88,7 +88,7 @@ fn shift_right(x: &RingElem, shift: usize) -> RingElem {
 }
 
 // Returns x*y and the size (deg+1) of the resulting polyn
-fn kara_mul(x: &[u16], y: &[u16]) -> RingElem {
+fn kara_mul_helper(x: &[u16], y: &[u16]) -> RingElem {
     assert_eq!(x.len(), y.len());
     let n = x.len();
 
@@ -104,9 +104,9 @@ fn kara_mul(x: &[u16], y: &[u16]) -> RingElem {
     let yl = &y[..mid];
     let yh = &y[mid..];
 
-    let z0 = kara_mul(xl, yl);
-    let z2 = kara_mul(xh, yh);
-    let z3 = kara_mul(&poly_add(xl, xh).0[..mid], &poly_add(yl, yh).0[..mid]);
+    let z0 = kara_mul_helper(xl, yl);
+    let z2 = kara_mul_helper(xh, yh);
+    let z3 = kara_mul_helper(&poly_add(xl, xh).0[..mid], &poly_add(yl, yh).0[..mid]);
     let z1 = poly_sub(&poly_sub(&z3.0, &z2.0).0, &z0.0);
 
     // Compute z0 + z1*X^mid + z2*X^(2mid)
@@ -118,6 +118,10 @@ fn kara_mul(x: &[u16], y: &[u16]) -> RingElem {
 }
 
 impl RingElem {
+    pub fn kara_mul(&self, other: &RingElem) -> RingElem {
+        kara_mul_helper(&self.0, &other.0)
+    }
+
     fn reduce(&mut self) {
         // Now reduce everything
         for i in 0..RING_DEG {
@@ -179,8 +183,12 @@ mod test {
             let a = RingElem::rand(&mut rng);
             let b = RingElem::rand(&mut rng);
 
-            let k = kara_mul(&a.0, &b.0);
-            assert_eq!(k, &a * &b);
+            let mut kara_prod = kara_mul_helper(&a.0, &b.0);
+            let mut schoolbook_prod = &a * &b;
+            kara_prod.reduce();
+            schoolbook_prod.reduce();
+
+            assert_eq!(kara_prod, schoolbook_prod);
         }
     }
 }
