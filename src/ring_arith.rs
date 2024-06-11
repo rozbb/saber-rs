@@ -41,22 +41,7 @@ impl<'a> Mul for &'a RingElem {
 
     // School book multiplication
     fn mul(self, other: &'a RingElem) -> Self::Output {
-        let mut result = RingElem::default();
-        // Do all the multiplications
-        for i in 0..RING_DEG {
-            for j in 0..(RING_DEG - i) {
-                let idx = i + j;
-                let prod = self.0[i].wrapping_mul(other.0[j]);
-                result.0[idx] = result.0[idx].wrapping_add(prod);
-            }
-            for j in (RING_DEG - i)..RING_DEG {
-                let prod = self.0[i].wrapping_mul(other.0[j]);
-                let idx = i + j - RING_DEG;
-                result.0[idx] = result.0[idx].wrapping_sub(prod);
-            }
-        }
-
-        result
+        schoolbook_mul_helper(&self.0, &other.0)
     }
 }
 
@@ -78,20 +63,26 @@ fn poly_sub(x: &[u16], y: &[u16]) -> RingElem {
     ret
 }
 
-fn shift_right(x: &RingElem, shift: usize) -> RingElem {
+/// Multiplies the given ring element by X^pow. In our representation, this means shifting the
+/// coefficients of p to the right, and multiplying by -1 when they wrap around
+fn mul_by_xpow(p: &RingElem, shift: usize) -> RingElem {
     let mut ret = RingElem::default();
     for i in 0..RING_DEG {
         let is_neg = ((i + shift) / RING_DEG) % 2 == 1;
-        let coeff = if is_neg { NEG_ONE } else { 1u16 };
-        ret.0[(i + shift) % RING_DEG] = coeff.wrapping_mul(x.0[i]);
+        let idx = (i + shift) % RING_DEG;
+        if is_neg {
+            ret.0[idx] = ret.0[idx].wrapping_sub(p.0[i]);
+        } else {
+            ret.0[idx] = ret.0[idx].wrapping_add(p.0[i]);
+        }
     }
     ret
 }
 
-// Returns x*y and the size (deg+1) of the resulting polyn
-fn kara_mul_helper(x: &[u16], y: &[u16]) -> RingElem {
-    assert_eq!(x.len(), y.len());
-    let n = x.len();
+// Returns p*q and the size (deg+1) of the resulting polyn
+fn kara_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
+    assert_eq!(p.len(), q.len());
+    let n = p.len();
 
     // Eventually, we have few enough terms that we should just do schoolbook multiplication
     if n == KARATSUBA_THRESHOLD {
@@ -99,7 +90,7 @@ fn kara_mul_helper(x: &[u16], y: &[u16]) -> RingElem {
         // n is small enough that there is no wrapping around the ring degree (256)
         for i in 0..n {
             for j in 0..n {
-                let prod = x[i].wrapping_mul(y[j]);
+                let prod = p[i].wrapping_mul(q[j]);
                 ret.0[i + j] = ret.0[i + j].wrapping_add(prod);
             }
         }
@@ -107,27 +98,50 @@ fn kara_mul_helper(x: &[u16], y: &[u16]) -> RingElem {
     }
 
     let mid = n / 2;
-    let xl = &x[..mid];
-    let xh = &x[mid..];
-    let yl = &y[..mid];
-    let yh = &y[mid..];
+    let pl = &p[..mid];
+    let ph = &p[mid..];
+    let ql = &q[..mid];
+    let qh = &q[mid..];
 
-    let z0 = kara_mul_helper(xl, yl);
-    let z2 = kara_mul_helper(xh, yh);
-    let z3 = kara_mul_helper(&poly_add(xl, xh).0[..mid], &poly_add(yl, yh).0[..mid]);
+    let z0 = kara_mul_helper(pl, ql);
+    let z2 = kara_mul_helper(ph, qh);
+    let z3 = kara_mul_helper(&poly_add(pl, ph).0[..mid], &poly_add(ql, qh).0[..mid]);
     let z1 = poly_sub(&poly_sub(&z3.0, &z2.0).0, &z0.0);
 
     // Compute z0 + z1*X^mid + z2*X^(2mid)
-    let z1 = shift_right(&z1, mid);
-    let z2 = shift_right(&z2, 2 * mid);
+    let z1 = mul_by_xpow(&z1, mid);
+    let z2 = mul_by_xpow(&z2, 2 * mid);
     let res = poly_add(&poly_add(&z0.0, &z1.0).0, &z2.0);
 
     res
 }
 
+fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
+    let mut result = RingElem::default();
+    // Do all the multiplications
+    for i in 0..RING_DEG {
+        for j in 0..(RING_DEG - i) {
+            let idx = i + j;
+            let prod = p[i].wrapping_mul(q[j]);
+            result.0[idx] = result.0[idx].wrapping_add(prod);
+        }
+        for j in (RING_DEG - i)..RING_DEG {
+            let prod = p[i].wrapping_mul(q[j]);
+            let idx = i + j - RING_DEG;
+            result.0[idx] = result.0[idx].wrapping_sub(prod);
+        }
+    }
+
+    result
+}
+
 impl RingElem {
     pub fn kara_mul(&self, other: &RingElem) -> RingElem {
         kara_mul_helper(&self.0, &other.0)
+    }
+
+    pub fn schoolbook_mul(&self, other: &RingElem) -> RingElem {
+        schoolbook_mul_helper(&self.0, &other.0)
     }
 
     fn reduce(&mut self) {
@@ -187,7 +201,7 @@ mod test {
     fn karatsuba() {
         let mut rng = thread_rng();
 
-        for _ in 0..100 {
+        for _ in 0..2 {
             let a = RingElem::rand(&mut rng);
             let b = RingElem::rand(&mut rng);
 

@@ -8,7 +8,7 @@ pub fn mul(c: &mut Criterion) {
         b.iter(|| {
             let r1 = RingElem::rand(&mut rng);
             let r2 = RingElem::rand(&mut rng);
-            &r1 * &r2
+            r1.schoolbook_mul(&r2)
         })
     });
     c.bench_function("karatsuba-mul", |b| {
