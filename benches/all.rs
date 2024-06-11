@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use rand::thread_rng;
 use saber::RingElem;
 
@@ -15,7 +15,7 @@ pub fn mul(c: &mut Criterion) {
         b.iter(|| {
             let r1 = RingElem::rand(&mut rng);
             let r2 = RingElem::rand(&mut rng);
-            r1.kara_mul(&r2)
+            r1.karatsuba_mul(&r2)
         })
     });
 }

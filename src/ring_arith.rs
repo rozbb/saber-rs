@@ -34,6 +34,83 @@ impl RingElem {
         }
         RingElem(result)
     }
+
+    fn from_bytes_mod8192(bytes: &[u8]) -> Self {
+        assert_eq!(bytes.len(), 13 * 256 / 8);
+
+        let mut poly = RingElem::default();
+        for (bs, cs) in bytes.chunks_exact(13).zip(poly.0.chunks_exact_mut(8)) {
+            cs[0] = (bs[0] as u16) | ((bs[1] as u16) << 8);
+            cs[1] = ((bs[1] as u16) >> 5) | ((bs[2] as u16) << 3) | ((bs[3] as u16) << 11);
+            cs[2] = ((bs[3] as u16) >> 2) | ((bs[4] as u16) << 6);
+            cs[3] = ((bs[4] as u16) >> 7) | ((bs[5] as u16) << 1) | ((bs[6] as u16) << 9);
+            cs[4] = ((bs[6] as u16) >> 4) | ((bs[7] as u16) << 4) | ((bs[8] as u16) << 12);
+            cs[5] = ((bs[8] as u16) >> 1) | ((bs[9] as u16) << 7);
+            cs[6] = ((bs[9] as u16) >> 6) | ((bs[10] as u16) << 2) | ((bs[11] as u16) << 10);
+            cs[7] = ((bs[11] as u16) >> 3) | ((bs[12] as u16) << 5);
+        }
+        poly.reduce();
+        poly
+    }
+
+    fn from_bytes_modq(b: &[u8]) -> Self {
+        let j = 0;
+        let mut offset_byte;
+        let mut offset_data;
+        let mut poly = RingElem::default();
+        let data = &mut poly.0;
+
+        let bytes: Vec<u16> = b.iter().map(|&x| x as u16).collect();
+
+        for j in 0..RING_DEG / 8 {
+            offset_byte = 13 * j;
+            offset_data = 8 * j;
+            data[offset_data + 0] =
+                (bytes[offset_byte + 0] & (0xff)) | ((bytes[offset_byte + 1] & 0x1f) << 8);
+            data[offset_data + 1] = (bytes[offset_byte + 1] >> 5 & (0x07))
+                | ((bytes[offset_byte + 2] & 0xff) << 3)
+                | ((bytes[offset_byte + 3] & 0x03) << 11);
+            data[offset_data + 2] =
+                (bytes[offset_byte + 3] >> 2 & (0x3f)) | ((bytes[offset_byte + 4] & 0x7f) << 6);
+            data[offset_data + 3] = (bytes[offset_byte + 4] >> 7 & (0x01))
+                | ((bytes[offset_byte + 5] & 0xff) << 1)
+                | ((bytes[offset_byte + 6] & 0x0f) << 9);
+            data[offset_data + 4] = (bytes[offset_byte + 6] >> 4 & (0x0f))
+                | ((bytes[offset_byte + 7] & 0xff) << 4)
+                | ((bytes[offset_byte + 8] & 0x01) << 12);
+            data[offset_data + 5] =
+                (bytes[offset_byte + 8] >> 1 & (0x7f)) | ((bytes[offset_byte + 9] & 0x3f) << 7);
+            data[offset_data + 6] = (bytes[offset_byte + 9] >> 6 & (0x03))
+                | ((bytes[offset_byte + 10] & 0xff) << 2)
+                | ((bytes[offset_byte + 11] & 0x07) << 10);
+            data[offset_data + 7] =
+                (bytes[offset_byte + 11] >> 3 & (0x1f)) | ((bytes[offset_byte + 12] & 0xff) << 5);
+        }
+
+        poly.reduce();
+        poly
+    }
+
+    fn from_bytes(bytes: &[u8], bits_per_elem: usize) -> Self {
+        assert_eq!(bytes.len(), bits_per_elem * 256 / 8);
+        let mut p = RingElem::default();
+
+        // Accumulate all the bits into p
+        let mut bit_idx = 0;
+        while bit_idx < bits_per_elem * 256 {
+            let byte_idx = bit_idx / 8;
+            let elem_idx = bit_idx / bits_per_elem;
+            let bit_in_byte = bit_idx % 8;
+            let bit_in_elem = bit_idx % bits_per_elem;
+
+            p.0[elem_idx] |= ((bytes[byte_idx] as u16) >> bit_in_byte) << bit_in_elem;
+            let just_accumulated = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
+            bit_idx += just_accumulated
+        }
+
+        p.reduce();
+        p
+    }
 }
 
 impl<'a> Mul for &'a RingElem {
@@ -80,7 +157,7 @@ fn mul_by_xpow(p: &RingElem, shift: usize) -> RingElem {
 }
 
 // Returns p*q and the size (deg+1) of the resulting polyn
-fn kara_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
+fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     assert_eq!(p.len(), q.len());
     let n = p.len();
 
@@ -103,9 +180,9 @@ fn kara_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     let ql = &q[..mid];
     let qh = &q[mid..];
 
-    let z0 = kara_mul_helper(pl, ql);
-    let z2 = kara_mul_helper(ph, qh);
-    let z3 = kara_mul_helper(&poly_add(pl, ph).0[..mid], &poly_add(ql, qh).0[..mid]);
+    let z0 = karatsuba_mul_helper(pl, ql);
+    let z2 = karatsuba_mul_helper(ph, qh);
+    let z3 = karatsuba_mul_helper(&poly_add(pl, ph).0[..mid], &poly_add(ql, qh).0[..mid]);
     let z1 = poly_sub(&poly_sub(&z3.0, &z2.0).0, &z0.0);
 
     // Compute z0 + z1*X^mid + z2*X^(2mid)
@@ -136,8 +213,8 @@ fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
 }
 
 impl RingElem {
-    pub fn kara_mul(&self, other: &RingElem) -> RingElem {
-        kara_mul_helper(&self.0, &other.0)
+    pub fn karatsuba_mul(&self, other: &RingElem) -> RingElem {
+        karatsuba_mul_helper(&self.0, &other.0)
     }
 
     pub fn schoolbook_mul(&self, other: &RingElem) -> RingElem {
@@ -145,10 +222,9 @@ impl RingElem {
     }
 
     fn reduce(&mut self) {
-        // Now reduce everything
-        for i in 0..RING_DEG {
-            self.0[i] %= MODULUS;
-        }
+        // We can do w & MODULUS- 1 instead of w % MODULUS because both simply leave the bottom 13
+        // bits
+        self.0.iter_mut().for_each(|w| *w &= MODULUS - 1)
     }
 }
 
@@ -156,14 +232,7 @@ impl<'a> Add for &'a RingElem {
     type Output = RingElem;
 
     fn add(self, other: &'a RingElem) -> Self::Output {
-        let mut result = [0u16; RING_DEG];
-        self.0
-            .iter()
-            .zip(other.0.iter())
-            .enumerate()
-            .for_each(|(i, (a, b))| result[i] = a.wrapping_add(*b));
-
-        RingElem(result)
+        poly_add(&self.0, &other.0)
     }
 }
 
@@ -171,7 +240,7 @@ impl<'a> Add for &'a RingElem {
 mod test {
     use super::*;
 
-    use rand::thread_rng;
+    use rand::{thread_rng, RngCore};
 
     // Checks that a * b == b * a and a + b == b + a for ring elements a, b
     #[test]
@@ -205,12 +274,31 @@ mod test {
             let a = RingElem::rand(&mut rng);
             let b = RingElem::rand(&mut rng);
 
-            let mut kara_prod = kara_mul_helper(&a.0, &b.0);
+            let mut kara_prod = karatsuba_mul_helper(&a.0, &b.0);
             let mut schoolbook_prod = &a * &b;
             kara_prod.reduce();
             schoolbook_prod.reduce();
 
             assert_eq!(kara_prod, schoolbook_prod);
+        }
+    }
+
+    #[test]
+    fn from_bytes() {
+        for _ in 0..100 {
+            let bits_per_elem = 13;
+            let mut rng = thread_rng();
+            let mut bytes = vec![0u8; bits_per_elem * 256 / 8];
+            rng.fill_bytes(&mut bytes);
+
+            assert_eq!(
+                RingElem::from_bytes_mod8192(&bytes),
+                RingElem::from_bytes_modq(&bytes)
+            );
+            assert_eq!(
+                RingElem::from_bytes_modq(&bytes),
+                RingElem::from_bytes(&bytes, bits_per_elem)
+            )
         }
     }
 }
