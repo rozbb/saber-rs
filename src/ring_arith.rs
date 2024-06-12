@@ -16,7 +16,7 @@ const KARATSUBA_THRESHOLD: usize = 128;
 /// An element of the ring (Z/2^13 Z)[X] / (X^256 + 1)
 // The coefficients are in order of ascending powers, i.e., `self.0[0]` is the constant term
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
-pub struct RingElem([u16; RING_DEG]);
+pub struct RingElem(pub(crate) [u16; RING_DEG]);
 
 impl Default for RingElem {
     fn default() -> Self {
@@ -149,13 +149,13 @@ fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
 /// Deserializes the given bitstring into a u16 array. Every element of the array has
 /// `bits_per_elem` bits (must be ≤ 16), encoded in the lower bits of the word.
 pub(crate) fn deserialize<const N: usize>(bytes: &[u8], bits_per_elem: usize) -> [u16; N] {
-    assert_eq!(bytes.len(), bits_per_elem * RING_DEG / 8);
+    assert_eq!(bytes.len(), bits_per_elem * N / 8);
     let bitmask = (1 << bits_per_elem) - 1;
     let mut p = [0u16; N];
 
     // Accumulate all the bits into p
     let mut bit_idx = 0;
-    while bit_idx < bits_per_elem * RING_DEG {
+    while bit_idx < bits_per_elem * N {
         let byte_idx = bit_idx / 8;
         let elem_idx = bit_idx / bits_per_elem;
         let bit_in_byte = bit_idx % 8;
@@ -176,11 +176,11 @@ pub(crate) fn deserialize<const N: usize>(bytes: &[u8], bits_per_elem: usize) ->
 /// Serializes the given u16 array into a bitstring. Every element of the array has `bits_per_elem`
 /// bits (must be ≤ 16), encoded in the lower bits of the word.
 fn serialize(data: &[u16], out_buf: &mut [u8], bits_per_elem: usize) {
-    assert_eq!(out_buf.len(), bits_per_elem * RING_DEG / 8);
+    assert_eq!(out_buf.len(), bits_per_elem * data.len() / 8);
 
     // Write all the bits into the given bytestring
     let mut bit_idx = 0;
-    while bit_idx < bits_per_elem * RING_DEG {
+    while bit_idx < bits_per_elem * data.len() {
         let byte_idx = bit_idx / 8;
         let elem_idx = bit_idx / bits_per_elem;
         let bit_in_byte = bit_idx % 8;
