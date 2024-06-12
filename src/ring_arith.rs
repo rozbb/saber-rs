@@ -18,6 +18,10 @@ const KARATSUBA_THRESHOLD: usize = 128;
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
 pub struct RingElem(pub(crate) [u16; RING_DEG]);
 
+/// An element of R^L, where R is a [`RingElem`]
+#[derive(Eq, PartialEq, Debug, Clone, Copy)]
+pub struct ModuleElem<const L: usize>(pub(crate) [RingElem; L]);
+
 impl Default for RingElem {
     fn default() -> Self {
         RingElem([0u16; RING_DEG])
