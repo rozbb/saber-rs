@@ -3,7 +3,10 @@ use core::ops::{Add, Mul};
 use rand_core::CryptoRngCore;
 
 /// The modulus of our base ring Z/2^13 Z
-const MODULUS: u16 = 1 << 13;
+pub(crate) const MODULUS: u16 = 1 << 13;
+
+/// The bitlength of the modulus
+pub(crate) const MODULUS_BITS: usize = 13;
 
 /// The value of -1 in Z/2^13 Z
 const NEG_ONE: u16 = MODULUS - 1;
@@ -17,10 +20,6 @@ const KARATSUBA_THRESHOLD: usize = 128;
 // The coefficients are in order of ascending powers, i.e., `self.0[0]` is the constant term
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
 pub struct RingElem(pub(crate) [u16; RING_DEG]);
-
-/// An element of R^L, where R is a [`RingElem`]
-#[derive(Eq, PartialEq, Debug, Clone, Copy)]
-pub struct ModuleElem<const L: usize>(pub(crate) [RingElem; L]);
 
 impl Default for RingElem {
     fn default() -> Self {
@@ -48,6 +47,24 @@ impl RingElem {
     fn to_bytes(self, out_buf: &mut [u8], bits_per_elem: usize) {
         assert_eq!(out_buf.len(), bits_per_elem * RING_DEG / 8);
         serialize(&self.0, out_buf, bits_per_elem)
+    }
+
+    // Algorithm 8, ShiftRight
+    /// Right-shifts each coefficient by the specified amount, essentially dividing each coeff by a
+    /// power of two with rounding
+    pub(crate) fn shift_right(&mut self, shift: usize) {
+        for coeff in self.0.iter_mut() {
+            *coeff >>= shift;
+        }
+    }
+
+    // Algorithm 7, ShiftLeft
+    /// Left-shifts each coefficient by the specified amount, essentially multiplying each coeff by
+    /// a power of two, mod 2^16
+    pub(crate) fn shift_left(&mut self, shift: usize) {
+        for coeff in self.0.iter_mut() {
+            *coeff <<= shift;
+        }
     }
 }
 
