@@ -267,6 +267,45 @@ mod test {
         }
     }
 
+    #[test]
+    fn from_bytes() {
+        let mut rng = thread_rng();
+
+        for _ in 0..1000 {
+            // Check that from_bytes matches the reference impl from_bytes for N=2^13,2^10
+            let bits_per_elem = 13;
+            let mut bytes = vec![0u8; bits_per_elem * 256 / 8];
+            rng.fill_bytes(&mut bytes);
+            assert_eq!(
+                refernce_impl_from_bytes_mod8192(&bytes),
+                RingElem::from_bytes(&bytes, 13)
+            );
+
+            let bits_per_elem = 10;
+            let mut bytes = vec![0u8; bits_per_elem * 256 / 8];
+            rng.fill_bytes(&mut bytes);
+            assert_eq!(
+                refernce_impl_from_bytes_mod1024(&bytes).0,
+                RingElem::from_bytes(&bytes, 10).0,
+            );
+
+            // Now check that to_bytes and from_bytes are inverses
+
+            // Pick a random bits_per_elem
+            let bits_per_elem = rng.gen_range(1..=13);
+            let bitmask = (1 << bits_per_elem) - 1;
+
+            // Generate a random element and make sure none of the values exceed 2^bits_per_elem
+            let mut p = RingElem::rand(&mut rng);
+            p.0.iter_mut().for_each(|e| *e &= bitmask);
+
+            // Chek that a round trip preserves the polynomial
+            let mut p_bytes = vec![0u8; bits_per_elem * 256 / 8];
+            p.to_bytes(&mut p_bytes, bits_per_elem);
+            assert_eq!(p, RingElem::from_bytes(&p_bytes, bits_per_elem));
+        }
+    }
+
     /// A nearly verbatim copy of the C reference impl of BS2POL_N where N = 2^13
     /// https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/pack_unpack.c#L101
     fn refernce_impl_from_bytes_mod8192(b: &[u8]) -> RingElem {
@@ -306,6 +345,8 @@ mod test {
         poly
     }
 
+    /// A nearly verbatim copy of the C reference impl of BS2POL_N where N = 2^10
+    /// https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/pack_unpack.c#L134
     fn refernce_impl_from_bytes_mod1024(b: &[u8]) -> RingElem {
         let mut offset_byte;
         let mut offset_data;
@@ -328,44 +369,5 @@ mod test {
 
         poly.reduce();
         poly
-    }
-
-    #[test]
-    fn from_bytes() {
-        let mut rng = thread_rng();
-
-        for _ in 0..1000 {
-            // Check that from_bytes matches the reference impl from_bytes for N=2^13,2^10
-            let bits_per_elem = 13;
-            let mut bytes = vec![0u8; bits_per_elem * 256 / 8];
-            rng.fill_bytes(&mut bytes);
-            assert_eq!(
-                refernce_impl_from_bytes_mod8192(&bytes),
-                RingElem::from_bytes(&bytes, 13)
-            );
-
-            let bits_per_elem = 10;
-            let mut bytes = vec![0u8; bits_per_elem * 256 / 8];
-            rng.fill_bytes(&mut bytes);
-            assert_eq!(
-                refernce_impl_from_bytes_mod1024(&bytes).0,
-                RingElem::from_bytes(&bytes, 10).0,
-            );
-
-            // Now check that to_bytes and from_bytes are inverses
-
-            // Pick a random bits_per_elem
-            let bits_per_elem = rng.gen_range(1..=13);
-            let bitmask = (1 << bits_per_elem) - 1;
-
-            // Generate a random element and make sure none of the values exceed 2^bits_per_elem
-            let mut p = RingElem::rand(&mut rng);
-            p.0.iter_mut().for_each(|e| *e &= bitmask);
-
-            // Chek that a round trip preserves the polynomial
-            let mut p_bytes = vec![0u8; bits_per_elem * 256 / 8];
-            p.to_bytes(&mut p_bytes, bits_per_elem);
-            assert_eq!(p, RingElem::from_bytes(&p_bytes, bits_per_elem));
-        }
     }
 }
