@@ -35,65 +35,15 @@ impl RingElem {
         RingElem(result)
     }
 
-    fn from_bytes_mod8192(bytes: &[u8]) -> Self {
-        assert_eq!(bytes.len(), 13 * 256 / 8);
-
-        let mut poly = RingElem::default();
-        for (bs, cs) in bytes.chunks_exact(13).zip(poly.0.chunks_exact_mut(8)) {
-            cs[0] = (bs[0] as u16) | ((bs[1] as u16) << 8);
-            cs[1] = ((bs[1] as u16) >> 5) | ((bs[2] as u16) << 3) | ((bs[3] as u16) << 11);
-            cs[2] = ((bs[3] as u16) >> 2) | ((bs[4] as u16) << 6);
-            cs[3] = ((bs[4] as u16) >> 7) | ((bs[5] as u16) << 1) | ((bs[6] as u16) << 9);
-            cs[4] = ((bs[6] as u16) >> 4) | ((bs[7] as u16) << 4) | ((bs[8] as u16) << 12);
-            cs[5] = ((bs[8] as u16) >> 1) | ((bs[9] as u16) << 7);
-            cs[6] = ((bs[9] as u16) >> 6) | ((bs[10] as u16) << 2) | ((bs[11] as u16) << 10);
-            cs[7] = ((bs[11] as u16) >> 3) | ((bs[12] as u16) << 5);
-        }
-        poly.reduce();
-        poly
-    }
-
-    fn from_bytes(bytes: &[u8], bits_per_elem: usize) -> Self {
-        assert_eq!(bytes.len(), bits_per_elem * 256 / 8);
-        let bitmask = (1 << bits_per_elem) - 1;
-        let mut p = RingElem::default();
-
-        // Accumulate all the bits into p
-        let mut bit_idx = 0;
-        while bit_idx < bits_per_elem * 256 {
-            let byte_idx = bit_idx / 8;
-            let elem_idx = bit_idx / bits_per_elem;
-            let bit_in_byte = bit_idx % 8;
-            let bit_in_elem = bit_idx % bits_per_elem;
-
-            p.0[elem_idx] |= ((bytes[byte_idx] as u16) >> bit_in_byte) << bit_in_elem;
-            let just_accumulated = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
-            bit_idx += just_accumulated;
-
-            // TODO: See if this bitmask is really necessary. Yes, we'll get noise in the high
-            // bits, but that's fine as long as these ring elements really are mod q
-            p.0[elem_idx] &= bitmask;
-        }
-
-        p.reduce();
-        p
+    pub(crate) fn from_bytes(bytes: &[u8], bits_per_elem: usize) -> Self {
+        assert_eq!(bytes.len(), bits_per_elem * RING_DEG / 8);
+        let arr = deserialize(bytes, bits_per_elem);
+        RingElem(arr)
     }
 
     fn to_bytes(self, out_buf: &mut [u8], bits_per_elem: usize) {
-        assert_eq!(out_buf.len(), bits_per_elem * 256 / 8);
-
-        // Write all the bits into the given bytestring
-        let mut bit_idx = 0;
-        while bit_idx < bits_per_elem * 256 {
-            let byte_idx = bit_idx / 8;
-            let elem_idx = bit_idx / bits_per_elem;
-            let bit_in_byte = bit_idx % 8;
-            let bit_in_elem = bit_idx % bits_per_elem;
-
-            out_buf[byte_idx] |= ((self.0[elem_idx] >> bit_in_elem) as u8) << bit_in_byte;
-            let just_wrote = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
-            bit_idx += just_wrote
-        }
+        assert_eq!(out_buf.len(), bits_per_elem * RING_DEG / 8);
+        serialize(&self.0, out_buf, bits_per_elem)
     }
 }
 
@@ -196,6 +146,52 @@ fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     result
 }
 
+/// Deserializes the given bitstring into a u16 array. Every element of the array has
+/// `bits_per_elem` bits (must be ≤ 16), encoded in the lower bits of the word.
+pub(crate) fn deserialize<const N: usize>(bytes: &[u8], bits_per_elem: usize) -> [u16; N] {
+    assert_eq!(bytes.len(), bits_per_elem * RING_DEG / 8);
+    let bitmask = (1 << bits_per_elem) - 1;
+    let mut p = [0u16; N];
+
+    // Accumulate all the bits into p
+    let mut bit_idx = 0;
+    while bit_idx < bits_per_elem * RING_DEG {
+        let byte_idx = bit_idx / 8;
+        let elem_idx = bit_idx / bits_per_elem;
+        let bit_in_byte = bit_idx % 8;
+        let bit_in_elem = bit_idx % bits_per_elem;
+
+        p[elem_idx] |= ((bytes[byte_idx] as u16) >> bit_in_byte) << bit_in_elem;
+        let just_accumulated = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
+        bit_idx += just_accumulated;
+
+        // TODO: See if this bitmask is really necessary. Yes, we'll get noise in the high
+        // bits, but that's fine as long as these ring elements really are mod q
+        p[elem_idx] &= bitmask;
+    }
+
+    p
+}
+
+/// Serializes the given u16 array into a bitstring. Every element of the array has `bits_per_elem`
+/// bits (must be ≤ 16), encoded in the lower bits of the word.
+fn serialize(data: &[u16], out_buf: &mut [u8], bits_per_elem: usize) {
+    assert_eq!(out_buf.len(), bits_per_elem * RING_DEG / 8);
+
+    // Write all the bits into the given bytestring
+    let mut bit_idx = 0;
+    while bit_idx < bits_per_elem * RING_DEG {
+        let byte_idx = bit_idx / 8;
+        let elem_idx = bit_idx / bits_per_elem;
+        let bit_in_byte = bit_idx % 8;
+        let bit_in_elem = bit_idx % bits_per_elem;
+
+        out_buf[byte_idx] |= ((data[elem_idx] >> bit_in_elem) as u8) << bit_in_byte;
+        let just_wrote = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
+        bit_idx += just_wrote
+    }
+}
+
 impl RingElem {
     pub fn karatsuba_mul(&self, other: &RingElem) -> RingElem {
         karatsuba_mul_helper(&self.0, &other.0)
@@ -274,7 +270,7 @@ mod test {
         for _ in 0..1000 {
             // Check that from_bytes matches the reference impl from_bytes for N=2^13,2^10
             let bits_per_elem = 13;
-            let mut bytes = vec![0u8; bits_per_elem * 256 / 8];
+            let mut bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
             rng.fill_bytes(&mut bytes);
             assert_eq!(
                 refernce_impl_from_bytes_mod8192(&bytes),
@@ -282,7 +278,7 @@ mod test {
             );
 
             let bits_per_elem = 10;
-            let mut bytes = vec![0u8; bits_per_elem * 256 / 8];
+            let mut bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
             rng.fill_bytes(&mut bytes);
             assert_eq!(
                 refernce_impl_from_bytes_mod1024(&bytes).0,
@@ -300,7 +296,7 @@ mod test {
             p.0.iter_mut().for_each(|e| *e &= bitmask);
 
             // Chek that a round trip preserves the polynomial
-            let mut p_bytes = vec![0u8; bits_per_elem * 256 / 8];
+            let mut p_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
             p.to_bytes(&mut p_bytes, bits_per_elem);
             assert_eq!(p, RingElem::from_bytes(&p_bytes, bits_per_elem));
         }
