@@ -1,6 +1,6 @@
 use crate::{
     matrix_arith::Matrix,
-    ring_arith::{deserialize, RingElem, MODULUS_BITS, RING_DEG},
+    ring_arith::{deserialize, RingElem, MODULUS_Q_BITS, RING_DEG},
 };
 
 use rand_core::CryptoRngCore;
@@ -50,15 +50,15 @@ pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
 pub(crate) fn gen_matrix_from_seed<const L: usize>(seed: [u8; 32]) -> Matrix<L, L> {
     // Make a buffer of the correct length. We can't do const math there, so just make one of the
     // max length and then cut it down
-    let mut backing_buf = [0u8; MAX_L * MAX_L * RING_DEG * MODULUS_BITS / 8];
-    let buf = &mut backing_buf[..L * L * RING_DEG * MODULUS_BITS / 8];
+    let mut backing_buf = [0u8; MAX_L * MAX_L * RING_DEG * MODULUS_Q_BITS / 8];
+    let buf = &mut backing_buf[..L * L * RING_DEG * MODULUS_Q_BITS / 8];
 
     // Hash seed to fill up buf with randomness
     Shake128::digest_xof(&seed, buf);
 
     let mut mat = Matrix::default();
-    for (idx, chunk) in buf.chunks(RING_DEG * MODULUS_BITS / 8).enumerate() {
-        let polyn = RingElem::from_bytes(chunk, MODULUS_BITS);
+    for (idx, chunk) in buf.chunks(RING_DEG * MODULUS_Q_BITS / 8).enumerate() {
+        let polyn = RingElem::from_bytes(chunk, MODULUS_Q_BITS);
 
         let i = idx / L;
         let j = idx % L;

@@ -2,14 +2,17 @@ use core::ops::{Add, Mul};
 
 use rand_core::CryptoRngCore;
 
-/// The modulus of our base ring Z/2^13 Z
-pub(crate) const MODULUS: u16 = 1 << 13;
+/// The modulus q of our base ring Z/2^13 Z
+pub(crate) const MODULUS_Q: u16 = 1 << 13;
 
-/// The bitlength of the modulus
-pub(crate) const MODULUS_BITS: usize = 13;
+/// The modulus p of some of our public values
+pub(crate) const MODULUS_P: u16 = 1 << 10;
 
-/// The value of -1 in Z/2^13 Z
-const NEG_ONE: u16 = MODULUS - 1;
+/// The bitlength of the modulus q
+pub(crate) const MODULUS_Q_BITS: usize = 13;
+
+/// The bitlength of the modulus p
+pub(crate) const MODULUS_P_BITS: usize = 10;
 
 /// The degree of the polynomial ring over Z/2^13 Z
 pub(crate) const RING_DEG: usize = 256;
@@ -32,7 +35,7 @@ impl RingElem {
     pub fn rand(rng: &mut impl CryptoRngCore) -> Self {
         let mut result = [0; RING_DEG];
         for i in 0..RING_DEG {
-            let coeff = rng.next_u32() % MODULUS as u32;
+            let coeff = rng.next_u32() % MODULUS_Q as u32;
             result[i] = coeff as u16;
         }
         RingElem(result)
@@ -44,7 +47,7 @@ impl RingElem {
         RingElem(arr)
     }
 
-    fn to_bytes(self, out_buf: &mut [u8], bits_per_elem: usize) {
+    pub(crate) fn to_bytes(self, out_buf: &mut [u8], bits_per_elem: usize) {
         assert_eq!(out_buf.len(), bits_per_elem * RING_DEG / 8);
         serialize(&self.0, out_buf, bits_per_elem)
     }
@@ -225,7 +228,7 @@ impl RingElem {
     fn reduce(&mut self) {
         // We can do w & MODULUS- 1 instead of w % MODULUS because both simply leave the bottom 13
         // bits
-        self.0.iter_mut().for_each(|w| *w &= MODULUS - 1)
+        self.0.iter_mut().for_each(|w| *w &= MODULUS_Q - 1)
     }
 }
 

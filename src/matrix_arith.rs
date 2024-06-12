@@ -1,4 +1,4 @@
-use crate::ring_arith::RingElem;
+use crate::ring_arith::{RingElem, RING_DEG};
 
 /// An element of R^{x×y} where R is a [`RingElem`], stored in row-major order
 #[derive(Eq, PartialEq, Debug, Clone)]
@@ -12,7 +12,7 @@ impl<const X: usize, const Y: usize> Default for Matrix<X, Y> {
 
 impl<const X: usize, const Y: usize> Matrix<X, Y> {
     /// Applies [`RingElem::shift_right`] to each element in the matrix
-    fn shift_right(&mut self, shift: usize) {
+    pub(crate) fn shift_right(&mut self, shift: usize) {
         for mut row in self.0 {
             for mut elem in row {
                 elem.shift_right(shift)
@@ -21,7 +21,7 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     }
 
     /// Multiplies the transpose of this matrix by the given vector
-    fn mul_transpose(&self, other: &Matrix<X, 1>) -> Matrix<Y, 1> {
+    pub(crate) fn mul_transpose(&self, other: &Matrix<X, 1>) -> Matrix<Y, 1> {
         let mut result = Matrix::default();
         for i in 0..Y {
             for j in 0..X {
@@ -31,6 +31,28 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
         }
 
         result
+    }
+
+    /// Adds a given value to all coefficients of all elements of the matrix
+    pub(crate) fn wrapping_add_to_all(&mut self, val: u16) {
+        for row in self.0.iter_mut() {
+            for elem in row.iter_mut() {
+                for coeff in elem.0.iter_mut() {
+                    *coeff = coeff.wrapping_add(val);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn to_bytes(&self, out_buf: &mut [u8], bits_per_elem: usize) {
+        assert_eq!(out_buf.len(), X * Y * bits_per_elem * RING_DEG / 8);
+        let mut chunk_iter = out_buf.chunks_mut(bits_per_elem * RING_DEG / 8);
+        for i in 0..Y {
+            for j in 0..X {
+                let out_chunk = chunk_iter.next().unwrap();
+                self.0[i][j].to_bytes(out_chunk, bits_per_elem);
+            }
+        }
     }
 }
 
