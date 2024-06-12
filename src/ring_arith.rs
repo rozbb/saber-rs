@@ -55,6 +55,7 @@ impl RingElem {
 
     fn from_bytes(bytes: &[u8], bits_per_elem: usize) -> Self {
         assert_eq!(bytes.len(), bits_per_elem * 256 / 8);
+        let bitmask = (1 << bits_per_elem) - 1;
         let mut p = RingElem::default();
 
         // Accumulate all the bits into p
@@ -67,7 +68,11 @@ impl RingElem {
 
             p.0[elem_idx] |= ((bytes[byte_idx] as u16) >> bit_in_byte) << bit_in_elem;
             let just_accumulated = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
-            bit_idx += just_accumulated
+            bit_idx += just_accumulated;
+
+            // TODO: See if this bitmask is really necessary. Yes, we'll get noise in the high
+            // bits, but that's fine as long as these ring elements really are mod q
+            p.0[elem_idx] &= bitmask;
         }
 
         p.reduce();
@@ -301,26 +306,66 @@ mod test {
         poly
     }
 
+    fn refernce_impl_from_bytes_mod1024(b: &[u8]) -> RingElem {
+        let mut offset_byte;
+        let mut offset_data;
+        let mut poly = RingElem::default();
+        let data = &mut poly.0;
+
+        let bytes: Vec<u16> = b.iter().map(|&x| x as u16).collect();
+        for j in 0..RING_DEG / 4 {
+            offset_byte = 5 * j;
+            offset_data = 4 * j;
+            data[offset_data + 0] =
+                (bytes[offset_byte + 0] & (0xff)) | ((bytes[offset_byte + 1] & 0x03) << 8);
+            data[offset_data + 1] =
+                ((bytes[offset_byte + 1] >> 2) & (0x3f)) | ((bytes[offset_byte + 2] & 0x0f) << 6);
+            data[offset_data + 2] =
+                ((bytes[offset_byte + 2] >> 4) & (0x0f)) | ((bytes[offset_byte + 3] & 0x3f) << 4);
+            data[offset_data + 3] =
+                ((bytes[offset_byte + 3] >> 6) & (0x03)) | ((bytes[offset_byte + 4] & 0xff) << 2);
+        }
+
+        poly.reduce();
+        poly
+    }
+
     #[test]
     fn from_bytes() {
-        for _ in 0..100 {
+        let mut rng = thread_rng();
+
+        for _ in 0..1000 {
+            // Check that from_bytes matches the reference impl from_bytes for N=2^13,2^10
             let bits_per_elem = 13;
-            let mut rng = thread_rng();
             let mut bytes = vec![0u8; bits_per_elem * 256 / 8];
             rng.fill_bytes(&mut bytes);
-
-            // Check that from_bytes matches the reference impl from_bytes for N=2^13
             assert_eq!(
                 refernce_impl_from_bytes_mod8192(&bytes),
                 RingElem::from_bytes(&bytes, 13)
             );
 
-            // Now check that to_bytes and from_bytes are inverses. Pick a random bits_per_elem
-            let bits_per_elem = rng.gen_range(1..=16);
-            let x = RingElem::rand(&mut rng);
-            let mut x_bytes = vec![0u8; bits_per_elem * 256 / 8];
-            x.to_bytes(&mut x_bytes, dbg!(bits_per_elem));
-            assert_eq!(x, RingElem::from_bytes(&x_bytes, bits_per_elem));
+            let bits_per_elem = 10;
+            let mut bytes = vec![0u8; bits_per_elem * 256 / 8];
+            rng.fill_bytes(&mut bytes);
+            assert_eq!(
+                refernce_impl_from_bytes_mod1024(&bytes).0,
+                RingElem::from_bytes(&bytes, 10).0,
+            );
+
+            // Now check that to_bytes and from_bytes are inverses
+
+            // Pick a random bits_per_elem
+            let bits_per_elem = rng.gen_range(1..=13);
+            let bitmask = (1 << bits_per_elem) - 1;
+
+            // Generate a random element and make sure none of the values exceed 2^bits_per_elem
+            let mut p = RingElem::rand(&mut rng);
+            p.0.iter_mut().for_each(|e| *e &= bitmask);
+
+            // Chek that a round trip preserves the polynomial
+            let mut p_bytes = vec![0u8; bits_per_elem * 256 / 8];
+            p.to_bytes(&mut p_bytes, bits_per_elem);
+            assert_eq!(p, RingElem::from_bytes(&p_bytes, bits_per_elem));
         }
     }
 }
