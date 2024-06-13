@@ -1,4 +1,4 @@
-use core::ops::{Add, Mul};
+use core::ops::{Add, Mul, Sub};
 
 use rand_core::CryptoRngCore;
 
@@ -68,6 +68,20 @@ impl RingElem {
         for coeff in self.0.iter_mut() {
             *coeff <<= shift;
         }
+    }
+
+    /// Adds a given value to all coefficients
+    pub(crate) fn wrapping_add_to_all(&mut self, val: u16) {
+        for coeff in self.0.iter_mut() {
+            *coeff = coeff.wrapping_add(val);
+        }
+    }
+
+    /// Reduces the coefficients of this ring element to their canonical representative modulo
+    /// 2^modbits
+    pub(crate) fn reduce_mod_2pow(&mut self, mod_bits: usize) {
+        let bitmask = (1 << mod_bits) - 1;
+        self.0.iter_mut().for_each(|w| *w &= bitmask);
     }
 }
 
@@ -199,7 +213,7 @@ pub(crate) fn deserialize<const N: usize>(bytes: &[u8], bits_per_elem: usize) ->
 
 /// Serializes the given u16 array into a bitstring. Every element of the array has `bits_per_elem`
 /// bits (must be ≤ 16), encoded in the lower bits of the word.
-fn serialize(data: &[u16], out_buf: &mut [u8], bits_per_elem: usize) {
+pub(crate) fn serialize(data: &[u16], out_buf: &mut [u8], bits_per_elem: usize) {
     assert_eq!(out_buf.len(), bits_per_elem * data.len() / 8);
 
     // Write all the bits into the given bytestring
@@ -237,6 +251,14 @@ impl<'a> Add for &'a RingElem {
 
     fn add(self, other: &'a RingElem) -> Self::Output {
         poly_add(&self.0, &other.0)
+    }
+}
+
+impl<'a> Sub for &'a RingElem {
+    type Output = RingElem;
+
+    fn sub(self, other: &'a RingElem) -> Self::Output {
+        poly_sub(&self.0, &other.0)
     }
 }
 

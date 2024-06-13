@@ -19,7 +19,7 @@ const MAX_L: usize = 4;
 /// Uses a random seed to generate an MLWR secret, i.e., an element in R^ℓ whose entries are
 /// sampled according to a binomial distribution
 pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
-    seed: [u8; 32],
+    seed: &[u8; 32],
 ) -> Matrix<L, 1> {
     // Make a buffer of the correct length. We can't do const math there, so just make one of the
     // max length and then cut it down
@@ -47,7 +47,7 @@ pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
 
 // Algorithm 15, GenMatrix
 /// Uses a random seed to generate a uniform matrix in R^{ℓ×ℓ}
-pub(crate) fn gen_matrix_from_seed<const L: usize>(seed: [u8; 32]) -> Matrix<L, L> {
+pub(crate) fn gen_matrix_from_seed<const L: usize>(seed: &[u8; 32]) -> Matrix<L, L> {
     // Make a buffer of the correct length. We can't do const math there, so just make one of the
     // max length and then cut it down
     let mut backing_buf = [0u8; MAX_L * MAX_L * RING_DEG * MODULUS_Q_BITS / 8];
@@ -76,5 +76,5 @@ fn test_gen_secret() {
     const MU: usize = 10;
     let mut seed = [0u8; 32];
     rng.fill_bytes(&mut seed);
-    let out = gen_secret_from_seed::<L, MU>(seed);
+    let out = gen_secret_from_seed::<L, MU>(&seed);
 }

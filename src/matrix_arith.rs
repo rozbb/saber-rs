@@ -20,6 +20,19 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
         }
     }
 
+    /// Multiplies this matrix by the given vector
+    pub(crate) fn mul(&self, other: &Matrix<Y, 1>) -> Matrix<X, 1> {
+        let mut result = Matrix::default();
+        for j in 0..X {
+            for i in 0..Y {
+                let prod = &self.0[i][j] * &other.0[0][i];
+                result.0[0][j] = &result.0[0][j] + &prod;
+            }
+        }
+
+        result
+    }
+
     /// Multiplies the transpose of this matrix by the given vector
     pub(crate) fn mul_transpose(&self, other: &Matrix<X, 1>) -> Matrix<Y, 1> {
         let mut result = Matrix::default();
@@ -37,9 +50,7 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     pub(crate) fn wrapping_add_to_all(&mut self, val: u16) {
         for row in self.0.iter_mut() {
             for elem in row.iter_mut() {
-                for coeff in elem.0.iter_mut() {
-                    *coeff = coeff.wrapping_add(val);
-                }
+                elem.wrapping_add_to_all(val);
             }
         }
     }
@@ -94,16 +105,23 @@ mod test {
         rng.fill_bytes(&mut vec1_seed);
         rng.fill_bytes(&mut vec2_seed);
 
-        let mat = gen_matrix_from_seed::<L>(mat_seed);
-        let vec1 = gen_secret_from_seed::<L, MU>(vec1_seed);
-        let vec2 = gen_secret_from_seed::<L, MU>(vec2_seed);
+        let mat = gen_matrix_from_seed::<L>(&mat_seed);
+        let vec1 = gen_secret_from_seed::<L, MU>(&vec1_seed);
+        let vec2 = gen_secret_from_seed::<L, MU>(&vec2_seed);
 
         let prod1 = {
             let vec_sum = &vec1 + &vec2;
             mat.mul_transpose(&vec_sum)
         };
         let prod2 = &mat.mul_transpose(&vec1) + &mat.mul_transpose(&vec2);
+        assert_eq!(prod1, prod2);
 
+        // Now do the same with mul
+        let prod1 = {
+            let vec_sum = &vec1 + &vec2;
+            mat.mul(&vec_sum)
+        };
+        let prod2 = &mat.mul(&vec1) + &mat.mul(&vec2);
         assert_eq!(prod1, prod2);
     }
 }
