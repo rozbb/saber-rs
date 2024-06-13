@@ -11,6 +11,17 @@ impl<const X: usize, const Y: usize> Default for Matrix<X, Y> {
 }
 
 impl<const X: usize, const Y: usize> Matrix<X, Y> {
+    #[cfg(test)]
+    pub fn rand(rng: &mut impl rand_core::CryptoRngCore) -> Self {
+        let mut mat = Matrix::default();
+        for i in 0..Y {
+            for j in 0..X {
+                mat.0[i][j] = RingElem::rand(rng);
+            }
+        }
+        mat
+    }
+
     /// Applies [`RingElem::shift_right`] to each element in the matrix
     pub(crate) fn shift_right(&mut self, shift: usize) {
         for mut row in self.0 {
@@ -21,12 +32,14 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     }
 
     /// Multiplies this matrix by the given vector
-    pub(crate) fn mul(&self, other: &Matrix<Y, 1>) -> Matrix<X, 1> {
+    pub(crate) fn mul<const Z: usize>(&self, other: &Matrix<Y, Z>) -> Matrix<X, Z> {
         let mut result = Matrix::default();
         for j in 0..X {
             for i in 0..Y {
-                let prod = &self.0[i][j] * &other.0[0][i];
-                result.0[0][j] = &result.0[0][j] + &prod;
+                for k in 0..Z {
+                    let prod = &self.0[i][j] * &other.0[k][i];
+                    result.0[k][j] = &result.0[k][j] + &prod;
+                }
             }
         }
 
@@ -34,12 +47,14 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     }
 
     /// Multiplies the transpose of this matrix by the given vector
-    pub(crate) fn mul_transpose(&self, other: &Matrix<X, 1>) -> Matrix<Y, 1> {
+    pub(crate) fn mul_transpose<const Z: usize>(&self, other: &Matrix<X, Z>) -> Matrix<Y, Z> {
         let mut result = Matrix::default();
         for i in 0..Y {
             for j in 0..X {
-                let prod = &self.0[i][j] * &other.0[0][j];
-                result.0[0][i] = &result.0[0][i] + &prod;
+                for k in 0..Z {
+                    let prod = &self.0[i][j] * &other.0[k][j];
+                    result.0[k][i] = &result.0[k][i] + &prod;
+                }
             }
         }
 
@@ -105,25 +120,27 @@ mod test {
 
     use crate::gen::{gen_matrix_from_seed, gen_secret_from_seed};
 
+    fn transpose_mat<const X: usize, const Y: usize>(mat: &Matrix<X, Y>) -> Matrix<Y, X> {
+        let mut ret = Matrix::default();
+        for i in 0..Y {
+            for j in 0..X {
+                ret.0[j][i] = mat.0[i][j];
+            }
+        }
+        ret
+    }
+
     // Checks that mul_transpose distributes over addition on the RHS
     #[test]
     fn distributivity() {
-        const L: usize = 4;
-        const MU: usize = 10;
+        const X: usize = 4;
+        const Y: usize = 7;
 
         let mut rng = rand::thread_rng();
 
-        let mut mat_seed = [0u8; 32];
-        let mut vec1_seed = [0u8; 32];
-        let mut vec2_seed = [0u8; 32];
-        rng.fill_bytes(&mut mat_seed);
-        rng.fill_bytes(&mut vec1_seed);
-        rng.fill_bytes(&mut vec2_seed);
-
-        let mat = gen_matrix_from_seed::<L>(&mat_seed);
-        let vec1 = gen_secret_from_seed::<L, MU>(&vec1_seed);
-        let vec2 = gen_secret_from_seed::<L, MU>(&vec2_seed);
-
+        let mat = Matrix::<X, Y>::rand(&mut rng);
+        let vec1 = Matrix::<X, 1>::rand(&mut rng);
+        let vec2 = Matrix::<X, 1>::rand(&mut rng);
         let prod1 = {
             let vec_sum = &vec1 + &vec2;
             mat.mul_transpose(&vec_sum)
@@ -132,11 +149,36 @@ mod test {
         assert_eq!(prod1, prod2);
 
         // Now do the same with mul
+        let vec1 = Matrix::<Y, 1>::rand(&mut rng);
+        let vec2 = Matrix::<Y, 1>::rand(&mut rng);
         let prod1 = {
             let vec_sum = &vec1 + &vec2;
             mat.mul(&vec_sum)
         };
         let prod2 = &mat.mul(&vec1) + &mat.mul(&vec2);
+        assert_eq!(prod1, prod2);
+    }
+
+    #[test]
+    fn transpose() {
+        const X: usize = 4;
+        const Y: usize = 7;
+        const Z: usize = 13;
+
+        let mut rng = rand::thread_rng();
+
+        // Check that A^T B == (B^T A)^T
+        let mat1 = Matrix::<X, Y>::rand(&mut rng);
+        let mat2 = Matrix::<X, Z>::rand(&mut rng);
+        let prod1 = mat1.mul_transpose(&mat2);
+        let prod2 = transpose_mat(&mat2.mul_transpose(&mat1));
+        assert_eq!(prod1, prod2);
+
+        // Check that (AB)^T == A^T B^T
+        let mat1 = Matrix::<X, Y>::rand(&mut rng);
+        let mat2 = Matrix::<Y, Z>::rand(&mut rng);
+        let prod1 = transpose_mat(&mat1.mul(&mat2));
+        let prod2 = transpose_mat(&mat2).mul(&transpose_mat(&mat1));
         assert_eq!(prod1, prod2);
     }
 }
