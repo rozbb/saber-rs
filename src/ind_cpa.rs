@@ -60,6 +60,33 @@ fn gen_keypair<const L: usize, const MU: usize>(
     )
 }
 
+fn dec<const L: usize, const MODULUS_T_BITS: usize>(
+    sk: &IndCpaSecretKey<L>,
+    ciphertext: &[u8],
+) -> [u8; 32] {
+    let (c_bytes, bprime_bytes) = ciphertext.split_at(MODULUS_T_BITS * RING_DEG / 8);
+
+    let bprime: Matrix<L, 1> = Matrix::from_bytes(bprime_bytes, MODULUS_P_BITS);
+
+    let mut c = RingElem::from_bytes(c_bytes, MODULUS_T_BITS);
+    c.shift_left(MODULUS_P_BITS - MODULUS_T_BITS);
+
+    let v = bprime.mul_transpose(&sk.0);
+    let mut v = v.0[0][0];
+    v.reduce_mod_2pow(MODULUS_P_BITS);
+
+    // Compute v - c + h₂
+    let mut c = &v - &c;
+    let h2_val = (1 << (MODULUS_P_BITS - 2)) - (1 << (MODULUS_P_BITS - MODULUS_T_BITS - 1))
+        + (1 << (MODULUS_Q_BITS - MODULUS_P_BITS - 1));
+    c.wrapping_add_to_all(h2_val);
+    c.shift_right(9);
+
+    let mut m = [0u8; 32];
+    c.to_bytes(&mut m, 1);
+    m
+}
+
 fn enc_deterministic<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     pk: &IndCpaPublicKey<L>,
     msg: &[u8; 32],
@@ -127,8 +154,10 @@ mod test {
         let mut msg = [0u8; 32];
         rng.fill_bytes(&mut enc_seed);
         rng.fill_bytes(&mut msg);
-        let mut out_buf = [0u8; MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8];
+        let mut ct_buf = [0u8; MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8];
 
-        enc_deterministic::<L, MU, MODULUS_T_BITS>(&pk, &msg, &enc_seed, &mut out_buf);
+        enc_deterministic::<L, MU, MODULUS_T_BITS>(&pk, &msg, &enc_seed, &mut ct_buf);
+        let recovered_msg = dec::<L, MODULUS_T_BITS>(&sk, &ct_buf);
+        assert_eq!(msg, recovered_msg);
     }
 }

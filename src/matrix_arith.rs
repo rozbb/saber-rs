@@ -65,6 +65,21 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
             }
         }
     }
+
+    pub(crate) fn from_bytes(bytes: &[u8], bits_per_elem: usize) -> Self {
+        assert_eq!(bytes.len(), X * Y * bits_per_elem * RING_DEG / 8);
+        let mut result = Matrix::default();
+
+        let mut chunk_iter = bytes.chunks(bits_per_elem * RING_DEG / 8);
+        for i in 0..Y {
+            for j in 0..X {
+                let chunk = chunk_iter.next().unwrap();
+                result.0[i][j] = RingElem::from_bytes(chunk, bits_per_elem);
+            }
+        }
+
+        result
+    }
 }
 
 impl<'a, const X: usize, const Y: usize> core::ops::Add<&'a Matrix<X, Y>> for &'a Matrix<X, Y> {
