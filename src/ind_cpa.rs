@@ -46,6 +46,9 @@ fn gen_keypair<const L: usize, const MU: usize>(
         let mut prod = mat_a.mul_transpose(&vec_s);
         // Add the h vector, which consists enitrely of 4's
         prod.wrapping_add_to_all(4);
+        prod.0[0]
+            .iter_mut()
+            .for_each(|p| p.reduce_mod_2pow(MODULUS_Q_BITS));
         // Now shift all the coefficients by EQ - EP = 13 - 10 = 3
         prod.shift_right(3);
         prod
@@ -80,7 +83,8 @@ fn dec<const L: usize, const MODULUS_T_BITS: usize>(
     let h2_val = (1 << (MODULUS_P_BITS - 2)) - (1 << (MODULUS_P_BITS - MODULUS_T_BITS - 1))
         + (1 << (MODULUS_Q_BITS - MODULUS_P_BITS - 1));
     c.wrapping_add_to_all(h2_val);
-    c.shift_right(9);
+    c.reduce_mod_2pow(MODULUS_P_BITS);
+    c.shift_right(MODULUS_P_BITS - 1);
 
     let mut m = [0u8; 32];
     c.to_bytes(&mut m, 1);
@@ -89,6 +93,7 @@ fn dec<const L: usize, const MODULUS_T_BITS: usize>(
 
 fn enc_deterministic<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     pk: &IndCpaPublicKey<L>,
+    sk: &IndCpaSecretKey<L>,
     msg: &[u8; 32],
     seed: &[u8; 32],
     out_buf: &mut [u8],
@@ -105,6 +110,9 @@ fn enc_deterministic<const L: usize, const MU: usize, const MODULUS_T_BITS: usiz
         let mut prod = mat_a.mul(&vec_sprime);
         // Add the h vector, which consists enitrely of 4's
         prod.wrapping_add_to_all(4);
+        prod.0[0]
+            .iter_mut()
+            .for_each(|p| p.reduce_mod_2pow(MODULUS_Q_BITS));
         // Now shift all the coefficients by EQ - EP = 13 - 10 = 3
         prod.shift_right(3);
         prod
@@ -115,11 +123,12 @@ fn enc_deterministic<const L: usize, const MU: usize, const MODULUS_T_BITS: usiz
     vprime.reduce_mod_2pow(MODULUS_P_BITS);
 
     let mut msg_polyn = RingElem(deserialize(msg, 1));
-    msg_polyn.shift_left(9);
+    msg_polyn.shift_left(MODULUS_P_BITS - 1);
 
     // Compute v' - mp + h₁
     let mut c = &vprime - &msg_polyn;
     c.wrapping_add_to_all(4);
+    c.reduce_mod_2pow(MODULUS_P_BITS);
     c.shift_right(MODULUS_P_BITS - MODULUS_T_BITS);
 
     c.to_bytes(
@@ -141,8 +150,8 @@ mod test {
     #[test]
     fn keygen() {
         const L: usize = 4;
-        const MU: usize = 10;
-        const MODULUS_T_BITS: usize = 4;
+        const MU: usize = 6;
+        const MODULUS_T_BITS: usize = 6;
 
         let mut rng = rand::thread_rng();
 
@@ -156,7 +165,7 @@ mod test {
         rng.fill_bytes(&mut msg);
         let mut ct_buf = [0u8; MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8];
 
-        enc_deterministic::<L, MU, MODULUS_T_BITS>(&pk, &msg, &enc_seed, &mut ct_buf);
+        enc_deterministic::<L, MU, MODULUS_T_BITS>(&pk, &sk, &msg, &enc_seed, &mut ct_buf);
         let recovered_msg = dec::<L, MODULUS_T_BITS>(&sk, &ct_buf);
         assert_eq!(msg, recovered_msg);
     }

@@ -40,6 +40,8 @@ pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
             let hamming2 = data[2 * i + 1].count_ones() as u16;
             polyn.0[i] = hamming1.wrapping_sub(hamming2);
         }
+        // Mask off the high order bits
+        polyn.reduce_mod_2pow(MODULUS_Q_BITS);
     }
 
     Matrix([polyns])
