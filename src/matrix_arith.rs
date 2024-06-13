@@ -24,7 +24,7 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
 
     /// Applies [`RingElem::shift_right`] to each element in the matrix
     pub(crate) fn shift_right(&mut self, shift: usize) {
-        for mut row in self.0 {
+        for row in self.0 {
             for mut elem in row {
                 elem.shift_right(shift)
             }
@@ -116,10 +116,6 @@ impl<'a, const X: usize, const Y: usize> core::ops::Add<&'a Matrix<X, Y>> for &'
 mod test {
     use super::*;
 
-    use rand::RngCore;
-
-    use crate::gen::{gen_matrix_from_seed, gen_secret_from_seed};
-
     fn transpose_mat<const X: usize, const Y: usize>(mat: &Matrix<X, Y>) -> Matrix<Y, X> {
         let mut ret = Matrix::default();
         for i in 0..Y {
@@ -130,7 +126,7 @@ mod test {
         ret
     }
 
-    // Checks that mul_transpose distributes over addition on the RHS
+    // Checks that mul and mul_transpose distribute over addition on the RHS
     #[test]
     fn distributivity() {
         const X: usize = 4;
@@ -138,6 +134,7 @@ mod test {
 
         let mut rng = rand::thread_rng();
 
+        // Test mul_transpose
         let mat = Matrix::<X, Y>::rand(&mut rng);
         let vec1 = Matrix::<X, 1>::rand(&mut rng);
         let vec2 = Matrix::<X, 1>::rand(&mut rng);

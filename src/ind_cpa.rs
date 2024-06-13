@@ -6,6 +6,8 @@ use crate::{
 
 use rand_core::CryptoRngCore;
 
+const H1_VAL: u16 = 1 << (MODULUS_Q_BITS - MODULUS_P_BITS - 1);
+
 struct IndCpaSecretKey<const L: usize>(Matrix<L, 1>);
 struct IndCpaPublicKey<const L: usize> {
     seed: [u8; 32],
@@ -44,13 +46,8 @@ fn gen_keypair<const L: usize, const MU: usize>(
     let vec_s = gen_secret_from_seed::<L, MU>(&secret_seed);
     let b = {
         let mut prod = mat_a.mul_transpose(&vec_s);
-        // Add the h vector, which consists enitrely of 4's
-        prod.wrapping_add_to_all(4);
-        prod.0[0]
-            .iter_mut()
-            .for_each(|p| p.reduce_mod_2pow(MODULUS_Q_BITS));
-        // Now shift all the coefficients by EQ - EP = 13 - 10 = 3
-        prod.shift_right(3);
+        prod.wrapping_add_to_all(H1_VAL);
+        prod.shift_right(MODULUS_Q_BITS - MODULUS_P_BITS);
         prod
     };
 
@@ -75,15 +72,13 @@ fn dec<const L: usize, const MODULUS_T_BITS: usize>(
     c.shift_left(MODULUS_P_BITS - MODULUS_T_BITS);
 
     let v = bprime.mul_transpose(&sk.0);
-    let mut v = v.0[0][0];
-    v.reduce_mod_2pow(MODULUS_P_BITS);
+    let v = v.0[0][0];
 
     // Compute v - c + h₂
     let mut c = &v - &c;
     let h2_val = (1 << (MODULUS_P_BITS - 2)) - (1 << (MODULUS_P_BITS - MODULUS_T_BITS - 1))
         + (1 << (MODULUS_Q_BITS - MODULUS_P_BITS - 1));
     c.wrapping_add_to_all(h2_val);
-    c.reduce_mod_2pow(MODULUS_P_BITS);
     c.shift_right(MODULUS_P_BITS - 1);
 
     let mut m = [0u8; 32];
@@ -108,27 +103,20 @@ fn enc_deterministic<const L: usize, const MU: usize, const MODULUS_T_BITS: usiz
 
     let bprime = {
         let mut prod = mat_a.mul(&vec_sprime);
-        // Add the h vector, which consists enitrely of 4's
-        prod.wrapping_add_to_all(4);
-        prod.0[0]
-            .iter_mut()
-            .for_each(|p| p.reduce_mod_2pow(MODULUS_Q_BITS));
-        // Now shift all the coefficients by EQ - EP = 13 - 10 = 3
-        prod.shift_right(3);
+        prod.wrapping_add_to_all(H1_VAL);
+        prod.shift_right(MODULUS_Q_BITS - MODULUS_P_BITS);
         prod
     };
 
     let vprime: Matrix<1, 1> = pk.vec.mul_transpose(&vec_sprime);
-    let mut vprime = vprime.0[0][0];
-    vprime.reduce_mod_2pow(MODULUS_P_BITS);
+    let vprime = vprime.0[0][0];
 
     let mut msg_polyn = RingElem(deserialize(msg, 1));
     msg_polyn.shift_left(MODULUS_P_BITS - 1);
 
     // Compute v' - mp + h₁
     let mut c = &vprime - &msg_polyn;
-    c.wrapping_add_to_all(4);
-    c.reduce_mod_2pow(MODULUS_P_BITS);
+    c.wrapping_add_to_all(H1_VAL);
     c.shift_right(MODULUS_P_BITS - MODULUS_T_BITS);
 
     c.to_bytes(
@@ -147,16 +135,15 @@ mod test {
 
     use rand::RngCore;
 
+    // Tests that Dec(Enc(m)) == m
     #[test]
-    fn keygen() {
-        const L: usize = 4;
-        const MU: usize = 6;
-        const MODULUS_T_BITS: usize = 6;
+    fn enc_dec() {
+        const L: usize = 2;
+        const MODULUS_T_BITS: usize = 3;
+        const MU: usize = 10;
 
         let mut rng = rand::thread_rng();
 
-        let mut sk_buf = [0u8; L * MODULUS_Q_BITS * RING_DEG / 8];
-        let mut pk_buf = [0u8; 32 + L * MODULUS_P_BITS * RING_DEG / 8];
         let (sk, pk) = gen_keypair::<L, MU>(&mut rng);
 
         let mut enc_seed = [0u8; 32];

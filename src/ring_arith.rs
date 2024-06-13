@@ -32,6 +32,7 @@ impl Default for RingElem {
 
 impl RingElem {
     /// Creates a random ring element
+    #[cfg(test)]
     pub fn rand(rng: &mut impl CryptoRngCore) -> Self {
         let mut result = [0; RING_DEG];
         for i in 0..RING_DEG {
@@ -224,9 +225,10 @@ pub(crate) fn serialize(data: &[u16], out_buf: &mut [u8], bits_per_elem: usize) 
         let bit_in_byte = bit_idx % 8;
         let bit_in_elem = bit_idx % bits_per_elem;
 
-        out_buf[byte_idx] |= ((data[elem_idx] >> bit_in_elem) as u8) << bit_in_byte;
-        let just_wrote = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
-        bit_idx += just_wrote
+        let bits_to_write = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
+        let bitmask = ((1u16 << bits_to_write) - 1) as u8;
+        out_buf[byte_idx] |= (((data[elem_idx] >> bit_in_elem) as u8) & bitmask) << bit_in_byte;
+        bit_idx += bits_to_write
     }
 }
 
@@ -277,15 +279,11 @@ mod test {
             let a = RingElem::rand(&mut rng);
             let b = RingElem::rand(&mut rng);
 
-            let mut prod_1 = &a * &b;
-            let mut prod_2 = &b * &a;
-            prod_1.reduce();
-            prod_2.reduce();
+            let prod_1 = &a * &b;
+            let prod_2 = &b * &a;
 
-            let mut sum_1 = &a + &b;
-            let mut sum_2 = &b + &a;
-            sum_1.reduce();
-            sum_2.reduce();
+            let sum_1 = &a + &b;
+            let sum_2 = &b + &a;
 
             assert_eq!(prod_1, prod_2);
             assert_eq!(sum_1, sum_2);
@@ -300,10 +298,8 @@ mod test {
             let a = RingElem::rand(&mut rng);
             let b = RingElem::rand(&mut rng);
 
-            let mut kara_prod = karatsuba_mul_helper(&a.0, &b.0);
-            let mut schoolbook_prod = &a * &b;
-            kara_prod.reduce();
-            schoolbook_prod.reduce();
+            let kara_prod = karatsuba_mul_helper(&a.0, &b.0);
+            let schoolbook_prod = &a * &b;
 
             assert_eq!(kara_prod, schoolbook_prod);
         }
@@ -314,7 +310,7 @@ mod test {
         let mut rng = thread_rng();
 
         for _ in 0..1000 {
-            // Check that from_bytes matches the reference impl from_bytes for N=2^13,2^10
+            // Check that from_bytes matches the reference impl from_bytes for N=2^13,2^10,2^1
             let bits_per_elem = 13;
             let mut bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
             rng.fill_bytes(&mut bytes);
@@ -322,14 +318,36 @@ mod test {
                 refernce_impl_from_bytes_mod8192(&bytes),
                 RingElem::from_bytes(&bytes, 13)
             );
+            // Now check it matches the reference to_bytes impl
+            let elem = RingElem::rand(&mut rng);
+            let mut my_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
+            let mut ref_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
+            elem.to_bytes(&mut my_bytes, bits_per_elem);
+            reference_impl_to_bytes_mod8192(&elem, &mut ref_bytes);
+            assert_eq!(my_bytes, ref_bytes);
 
             let bits_per_elem = 10;
             let mut bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
             rng.fill_bytes(&mut bytes);
             assert_eq!(
-                refernce_impl_from_bytes_mod1024(&bytes).0,
+                reference_impl_from_bytes_mod1024(&bytes).0,
                 RingElem::from_bytes(&bytes, 10).0,
             );
+
+            let bits_per_elem = 1;
+            let mut bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
+            rng.fill_bytes(&mut bytes);
+            assert_eq!(
+                reference_impl_from_bytes_mod2(&bytes).0,
+                RingElem::from_bytes(&bytes, 1).0,
+            );
+            // Now check it matches the reference to_bytes impl
+            let elem = RingElem::rand(&mut rng);
+            let mut my_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
+            let mut ref_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
+            elem.to_bytes(&mut my_bytes, bits_per_elem);
+            reference_impl_to_bytes_mod2(&elem, &mut ref_bytes);
+            assert_eq!(my_bytes, ref_bytes);
 
             // Now check that to_bytes and from_bytes are inverses
 
@@ -341,10 +359,18 @@ mod test {
             let mut p = RingElem::rand(&mut rng);
             p.0.iter_mut().for_each(|e| *e &= bitmask);
 
-            // Chek that a round trip preserves the polynomial
+            // Check that a round trip preserves the polynomial
             let mut p_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
             p.to_bytes(&mut p_bytes, bits_per_elem);
             assert_eq!(p, RingElem::from_bytes(&p_bytes, bits_per_elem));
+
+            // Now other way around
+            let mut p_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
+            rng.fill_bytes(&mut p_bytes);
+            let p = RingElem::from_bytes(&p_bytes, bits_per_elem);
+            let mut new_p_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
+            p.to_bytes(&mut new_p_bytes, bits_per_elem);
+            assert_eq!(p_bytes, new_p_bytes);
         }
     }
 
@@ -383,13 +409,12 @@ mod test {
                 (bytes[offset_byte + 11] >> 3 & (0x1f)) | ((bytes[offset_byte + 12] & 0xff) << 5);
         }
 
-        poly.reduce();
         poly
     }
 
     /// A nearly verbatim copy of the C reference impl of BS2POL_N where N = 2^10
     /// https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/pack_unpack.c#L134
-    fn refernce_impl_from_bytes_mod1024(b: &[u8]) -> RingElem {
+    fn reference_impl_from_bytes_mod1024(b: &[u8]) -> RingElem {
         let mut offset_byte;
         let mut offset_data;
         let mut poly = RingElem::default();
@@ -409,7 +434,63 @@ mod test {
                 ((bytes[offset_byte + 3] >> 6) & (0x03)) | ((bytes[offset_byte + 4] & 0xff) << 2);
         }
 
-        poly.reduce();
         poly
+    }
+
+    fn reference_impl_from_bytes_mod2(b: &[u8]) -> RingElem {
+        let mut poly = RingElem::default();
+        let data = &mut poly.0;
+
+        let bytes: Vec<u16> = b.iter().map(|&x| x as u16).collect();
+        for j in 0..32 {
+            {
+                for i in 0..8 {
+                    data[j * 8 + i] = (bytes[j] >> i) & 0x01;
+                }
+            }
+        }
+
+        poly
+    }
+
+    fn reference_impl_to_bytes_mod8192(polyn: &RingElem, bytes: &mut [u8]) {
+        let mut offset_byte: usize;
+        let mut offset_data: usize;
+        let data = polyn.0;
+
+        for j in 0..RING_DEG / 8 {
+            offset_byte = 13 * j;
+            offset_data = 8 * j;
+            bytes[offset_byte + 0] = (data[offset_data + 0] & (0xff)) as u8;
+            bytes[offset_byte + 1] = ((data[offset_data + 0] >> 8) & 0x1f) as u8
+                | ((data[offset_data + 1] & 0x07) << 5) as u8;
+            bytes[offset_byte + 2] = ((data[offset_data + 1] >> 3) & 0xff) as u8;
+            bytes[offset_byte + 3] = ((data[offset_data + 1] >> 11) & 0x03) as u8
+                | ((data[offset_data + 2] & 0x3f) << 2) as u8;
+            bytes[offset_byte + 4] = ((data[offset_data + 2] >> 6) & 0x7f) as u8
+                | ((data[offset_data + 3] & 0x01) << 7) as u8;
+            bytes[offset_byte + 5] = ((data[offset_data + 3] >> 1) & 0xff) as u8;
+            bytes[offset_byte + 6] = ((data[offset_data + 3] >> 9) & 0x0f) as u8
+                | ((data[offset_data + 4] & 0x0f) << 4) as u8;
+            bytes[offset_byte + 7] = ((data[offset_data + 4] >> 4) & 0xff) as u8;
+            bytes[offset_byte + 8] = ((data[offset_data + 4] >> 12) & 0x01) as u8
+                | ((data[offset_data + 5] & 0x7f) << 1) as u8;
+            bytes[offset_byte + 9] = ((data[offset_data + 5] >> 7) & 0x3f) as u8
+                | ((data[offset_data + 6] & 0x03) << 6) as u8;
+            bytes[offset_byte + 10] = ((data[offset_data + 6] >> 2) & 0xff) as u8;
+            bytes[offset_byte + 11] = ((data[offset_data + 6] >> 10) & 0x07) as u8
+                | ((data[offset_data + 7] & 0x1f) << 3) as u8;
+            bytes[offset_byte + 12] = ((data[offset_data + 7] >> 5) & 0xff) as u8;
+        }
+    }
+
+    fn reference_impl_to_bytes_mod2(polyn: &RingElem, bytes: &mut [u8]) {
+        let data = polyn.0;
+
+        for j in 0..32 {
+            for i in 0..8 {
+                bytes[j] = bytes[j] | ((data[j * 8 + i] & 0x01) << i) as u8;
+            }
+        }
     }
 }

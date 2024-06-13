@@ -41,7 +41,7 @@ pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
             polyn.0[i] = hamming1.wrapping_sub(hamming2);
         }
         // Mask off the high order bits
-        polyn.reduce_mod_2pow(MODULUS_Q_BITS);
+        //polyn.reduce_mod_2pow(MODULUS_Q_BITS);
     }
 
     Matrix([polyns])
@@ -74,9 +74,10 @@ pub(crate) fn gen_matrix_from_seed<const L: usize>(seed: &[u8; 32]) -> Matrix<L,
 fn test_gen_secret() {
     use rand::RngCore;
     let mut rng = rand::thread_rng();
-    const L: usize = 4;
-    const MU: usize = 10;
+    const L: usize = 3;
+    const MU: usize = 8;
     let mut seed = [0u8; 32];
-    rng.fill_bytes(&mut seed);
+    //rng.fill_bytes(&mut seed);
     let out = gen_secret_from_seed::<L, MU>(&seed);
+    println!("secret is {:?}", out);
 }
