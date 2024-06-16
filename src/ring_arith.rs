@@ -32,7 +32,6 @@ impl Default for RingElem {
 
 impl RingElem {
     /// Creates a random ring element
-    #[cfg(test)]
     pub fn rand(rng: &mut impl CryptoRngCore) -> Self {
         let mut result = [0; RING_DEG];
         for i in 0..RING_DEG {

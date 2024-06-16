@@ -24,8 +24,8 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
 
     /// Applies [`RingElem::shift_right`] to each element in the matrix
     pub(crate) fn shift_right(&mut self, shift: usize) {
-        for row in self.0 {
-            for mut elem in row {
+        for row in self.0.iter_mut() {
+            for elem in row.iter_mut() {
                 elem.shift_right(shift)
             }
         }

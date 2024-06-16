@@ -75,14 +75,14 @@ fn dec<const L: usize, const MODULUS_T_BITS: usize>(
     let v = v.0[0][0];
 
     // Compute v - c + h₂
-    let mut c = &v - &c;
+    let mut mprime = &v - &c;
     let h2_val = (1 << (MODULUS_P_BITS - 2)) - (1 << (MODULUS_P_BITS - MODULUS_T_BITS - 1))
         + (1 << (MODULUS_Q_BITS - MODULUS_P_BITS - 1));
-    c.wrapping_add_to_all(h2_val);
-    c.shift_right(MODULUS_P_BITS - 1);
+    mprime.wrapping_add_to_all(h2_val);
+    mprime.shift_right(MODULUS_P_BITS - 1);
 
     let mut m = [0u8; 32];
-    c.to_bytes(&mut m, 1);
+    mprime.to_bytes(&mut m, 1);
     m
 }
 
@@ -138,22 +138,27 @@ mod test {
     // Tests that Dec(Enc(m)) == m
     #[test]
     fn enc_dec() {
-        const L: usize = 2;
-        const MODULUS_T_BITS: usize = 3;
-        const MU: usize = 10;
+        test_enc_dec::<2, 3, 10>();
+        test_enc_dec::<3, 4, 8>();
+        test_enc_dec::<4, 6, 6>();
+    }
 
+    fn test_enc_dec<const L: usize, const MODULUS_T_BITS: usize, const MU: usize>() {
         let mut rng = rand::thread_rng();
 
-        let (sk, pk) = gen_keypair::<L, MU>(&mut rng);
+        for _ in 0..100 {
+            let (sk, pk) = gen_keypair::<L, MU>(&mut rng);
 
-        let mut enc_seed = [0u8; 32];
-        let mut msg = [0u8; 32];
-        rng.fill_bytes(&mut enc_seed);
-        rng.fill_bytes(&mut msg);
-        let mut ct_buf = [0u8; MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8];
+            let mut enc_seed = [0u8; 32];
+            let mut msg = [0u8; 32];
+            rng.fill_bytes(&mut enc_seed);
+            rng.fill_bytes(&mut msg);
+            let mut ct_buf =
+                vec![0u8; MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8];
 
-        enc_deterministic::<L, MU, MODULUS_T_BITS>(&pk, &sk, &msg, &enc_seed, &mut ct_buf);
-        let recovered_msg = dec::<L, MODULUS_T_BITS>(&sk, &ct_buf);
-        assert_eq!(msg, recovered_msg);
+            enc_deterministic::<L, MU, MODULUS_T_BITS>(&pk, &sk, &msg, &enc_seed, &mut ct_buf);
+            let recovered_msg = dec::<L, MODULUS_T_BITS>(&sk, &ct_buf);
+            assert_eq!(msg, recovered_msg);
+        }
     }
 }
