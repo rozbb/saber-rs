@@ -8,21 +8,23 @@ use rand_core::CryptoRngCore;
 
 const H1_VAL: u16 = 1 << (MODULUS_Q_BITS - MODULUS_P_BITS - 1);
 
-struct IndCpaSecretKey<const L: usize>(Matrix<L, 1>);
-struct IndCpaPublicKey<const L: usize> {
+pub(crate) struct IndCpaSecretKey<const L: usize>(Matrix<L, 1>);
+
+#[derive(Clone)]
+pub(crate) struct IndCpaPublicKey<const L: usize> {
     seed: [u8; 32],
     vec: Matrix<L, 1>,
 }
 
 impl<const L: usize> IndCpaSecretKey<L> {
-    fn serialize(&self, out_buf: &mut [u8]) {
+    pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
         assert_eq!(out_buf.len(), L * MODULUS_Q_BITS * RING_DEG / 8);
         self.0.to_bytes(out_buf, MODULUS_Q_BITS);
     }
 }
 
 impl<const L: usize> IndCpaPublicKey<L> {
-    fn serialize(&self, out_buf: &mut [u8]) {
+    pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
         assert_eq!(out_buf.len(), 32 + L * MODULUS_P_BITS * RING_DEG / 8);
 
         // Write out the pubkey seed
@@ -34,7 +36,7 @@ impl<const L: usize> IndCpaPublicKey<L> {
 
 // Algorithm 17, Saber.PKE.KeyGen
 /// Generates a keypair with a secret from R^ℓ with bionimal parameter μ
-fn gen_keypair<const L: usize, const MU: usize>(
+pub(crate) fn gen_keypair<const L: usize, const MU: usize>(
     rng: &mut impl CryptoRngCore,
 ) -> (IndCpaSecretKey<L>, IndCpaPublicKey<L>) {
     let mut matrix_seed = [0u8; 32];
@@ -60,10 +62,15 @@ fn gen_keypair<const L: usize, const MU: usize>(
     )
 }
 
-fn dec<const L: usize, const MODULUS_T_BITS: usize>(
+pub(crate) fn dec<const L: usize, const MODULUS_T_BITS: usize>(
     sk: &IndCpaSecretKey<L>,
     ciphertext: &[u8],
 ) -> [u8; 32] {
+    assert_eq!(
+        ciphertext.len(),
+        MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8
+    );
+
     let (c_bytes, bprime_bytes) = ciphertext.split_at(MODULUS_T_BITS * RING_DEG / 8);
 
     let bprime: Matrix<L, 1> = Matrix::from_bytes(bprime_bytes, MODULUS_P_BITS);
@@ -86,9 +93,8 @@ fn dec<const L: usize, const MODULUS_T_BITS: usize>(
     m
 }
 
-fn enc_deterministic<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
+pub(crate) fn enc_deterministic<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     pk: &IndCpaPublicKey<L>,
-    sk: &IndCpaSecretKey<L>,
     msg: &[u8; 32],
     seed: &[u8; 32],
     out_buf: &mut [u8],
@@ -156,7 +162,7 @@ mod test {
             let mut ct_buf =
                 vec![0u8; MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8];
 
-            enc_deterministic::<L, MU, MODULUS_T_BITS>(&pk, &sk, &msg, &enc_seed, &mut ct_buf);
+            enc_deterministic::<L, MU, MODULUS_T_BITS>(&pk, &msg, &enc_seed, &mut ct_buf);
             let recovered_msg = dec::<L, MODULUS_T_BITS>(&sk, &ct_buf);
             assert_eq!(msg, recovered_msg);
         }

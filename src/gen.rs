@@ -13,7 +13,7 @@ use sha3::{
 const MAX_MU: usize = 10;
 
 /// The maximum possible l value is l=4, set by FireSaber
-const MAX_L: usize = 4;
+pub(crate) const MAX_L: usize = 4;
 
 // Algorithm 16, GenSecret
 /// Uses a random seed to generate an MLWR secret, i.e., an element in R^ℓ whose entries are
