@@ -11,7 +11,7 @@ const H1_VAL: u16 = 1 << (MODULUS_Q_BITS - MODULUS_P_BITS - 1);
 pub(crate) struct IndCpaSecretKey<const L: usize>(Matrix<L, 1>);
 
 #[derive(Clone)]
-pub(crate) struct IndCpaPublicKey<const L: usize> {
+pub struct IndCpaPublicKey<const L: usize> {
     seed: [u8; 32],
     vec: Matrix<L, 1>,
 }

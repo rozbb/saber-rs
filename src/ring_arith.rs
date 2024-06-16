@@ -12,10 +12,10 @@ pub(crate) const MODULUS_P: u16 = 1 << 10;
 pub(crate) const MODULUS_Q_BITS: usize = 13;
 
 /// The bitlength of the modulus p
-pub(crate) const MODULUS_P_BITS: usize = 10;
+pub const MODULUS_P_BITS: usize = 10;
 
 /// The degree of the polynomial ring over Z/2^13 Z
-pub(crate) const RING_DEG: usize = 256;
+pub const RING_DEG: usize = 256;
 
 const KARATSUBA_THRESHOLD: usize = 128;
 
@@ -91,6 +91,7 @@ impl<'a> Mul for &'a RingElem {
     // School book multiplication
     fn mul(self, other: &'a RingElem) -> Self::Output {
         schoolbook_mul_helper(&self.0, &other.0)
+        //karatsuba_mul_helper(&self.0, &other.0)
     }
 }
 
@@ -314,7 +315,7 @@ mod test {
             let mut bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
             rng.fill_bytes(&mut bytes);
             assert_eq!(
-                refernce_impl_from_bytes_mod8192(&bytes),
+                reference_impl_from_bytes_mod8192(&bytes),
                 RingElem::from_bytes(&bytes, 13)
             );
             // Now check it matches the reference to_bytes impl
@@ -375,7 +376,7 @@ mod test {
 
     /// A nearly verbatim copy of the C reference impl of BS2POL_N where N = 2^13
     /// https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/pack_unpack.c#L101
-    fn refernce_impl_from_bytes_mod8192(b: &[u8]) -> RingElem {
+    fn reference_impl_from_bytes_mod8192(b: &[u8]) -> RingElem {
         let mut offset_byte;
         let mut offset_data;
         let mut poly = RingElem::default();
