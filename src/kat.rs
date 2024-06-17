@@ -139,7 +139,7 @@ fn kat_helper<const L: usize, const MODULUS_BITS_T: usize, const MU: usize>(file
 #[test]
 fn kat_lightsaber() {
     let filename = "PQCkemKAT_1568.rsp.json";
-    const L: usize = 3;
+    const L: usize = 2;
     const MODULUS_BITS_T: usize = 3;
     const MU: usize = 10;
 
