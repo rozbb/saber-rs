@@ -91,7 +91,7 @@ pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     let hash_pk = Sha3_256::digest(pk_bytes);
 
     // kr = SHA3-512(m || hash_pk)
-    // The spec has the input order switched, but we're following the reference impl
+    // The spec has the hash input order switched, but we're following the reference impl
     // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L35-L39
     let kr = {
         let mut h = sha3::Sha3_512::new();
@@ -113,11 +113,13 @@ pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     // r' = SHA3-256(ct)
     let rprime = Sha3_256::digest(out_buf);
 
-    // session key = SHA3-256(r' || k)
+    // session key = SHA3-256(k || r')
+    // The spec has the hash input order switched, but we're following the reference impl
+    // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L46
     let sess_key = {
         let mut h = Sha3_256::new();
-        h.update(rprime);
         h.update(k);
+        h.update(rprime);
         h.finalize()
     };
     sess_key.into()
@@ -135,7 +137,7 @@ pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     let m = ind_cpa::dec::<L, MODULUS_T_BITS>(&sk.cpa_sk, ciphertext);
 
     // kr = SHA3-512(m || hash_pk)
-    // The spec has the input order switched, but we're following the reference impl
+    // The spec has the hash input order switched, but we're following the reference impl
     // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L35-L39
     let kr = {
         let mut h = sha3::Sha3_512::new();
@@ -167,11 +169,13 @@ pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
         suffix[i] = u8::conditional_select(&sk.z[i], &k[i], reconstruction_matched);
     }
 
-    // session key = SHA3-256(r' || suffix)
+    // session key = SHA3-256(k || r')
+    // The spec has the hash input order switched, but we're following the reference impl
+    // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L46
     let sess_key = {
         let mut h = Sha3_256::new();
+        h.update(k);
         h.update(rprime);
-        h.update(suffix);
         h.finalize()
     };
     sess_key.into()
