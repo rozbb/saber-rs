@@ -1,9 +1,11 @@
 //! This module contains code for running known-answer tests (KATs)
 
+use crate::ind_cca::{IndCcaPublicKey, IndCcaSecretKey};
+
+use std::{string::String, vec::Vec};
+
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Deserializer, Serialize};
-
-use crate::ind_cca::{IndCcaPublicKey, IndCcaSecretKey};
 
 /// The RNG we'll use for KATs. This is an AES-256 CTR DRBG with no personalization strings
 struct KatRng(aes_ctr_drbg::DrbgCtx);
@@ -114,18 +116,16 @@ fn kat() {
     let test_vectors = serde_json::from_reader::<_, Vec<TestVector>>(kat_json_file).unwrap();
 
     for tv in test_vectors {
-        println!("seed == {:02x?}", &tv.seed);
-
         let mut rng = KatRng::new(&tv.seed);
         let (sk, pk) = crate::ind_cca::gen_keypair::<L, MU>(&mut rng);
 
         let mut sk_buf = vec![0u8; IndCcaSecretKey::<L>::serialized_len()];
         sk.to_bytes(&mut sk_buf);
-        //println!("sk == {:02x?}", sk_buf);
+        //assert_eq!(sk_buf, tv.sk);
 
         let mut pk_buf = vec![0u8; IndCcaPublicKey::<L>::serialized_len()];
         pk.to_bytes(&mut pk_buf);
-        println!("pk == {:02x?}", pk_buf);
+        assert_eq!(pk_buf, tv.pk);
 
         break;
     }

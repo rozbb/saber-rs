@@ -1,3 +1,7 @@
+#[cfg(test)]
+#[macro_use]
+extern crate std;
+
 mod gen;
 pub mod ind_cca;
 mod ind_cpa;

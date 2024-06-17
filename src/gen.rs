@@ -40,7 +40,7 @@ pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
         //polyn.reduce_mod_2pow(MODULUS_Q_BITS);
     }
 
-    Matrix([polyns])
+    Matrix([polyns]).transpose()
 }
 
 // Algorithm 15, GenMatrix

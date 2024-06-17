@@ -176,8 +176,8 @@ fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
             result.0[idx] = result.0[idx].wrapping_add(prod);
         }
         for j in (RING_DEG - i)..RING_DEG {
-            let prod = p[i].wrapping_mul(q[j]);
             let idx = i + j - RING_DEG;
+            let prod = p[i].wrapping_mul(q[j]);
             result.0[idx] = result.0[idx].wrapping_sub(prod);
         }
     }

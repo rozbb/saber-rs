@@ -1,12 +1,13 @@
 use crate::ring_arith::{RingElem, RING_DEG};
 
 /// An element of R^{x×y} where R is a [`RingElem`], stored in row-major order
+// We store the matrix in row-major order, so the outer array is the number of rows, i.e., the height, i.e., X
 #[derive(Eq, PartialEq, Debug, Clone)]
-pub(crate) struct Matrix<const X: usize, const Y: usize>(pub(crate) [[RingElem; X]; Y]);
+pub(crate) struct Matrix<const X: usize, const Y: usize>(pub(crate) [[RingElem; Y]; X]);
 
 impl<const X: usize, const Y: usize> Default for Matrix<X, Y> {
     fn default() -> Self {
-        Matrix([[RingElem::default(); X]; Y])
+        Matrix([[RingElem::default(); Y]; X])
     }
 }
 
@@ -14,8 +15,8 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     #[cfg(test)]
     pub fn rand(rng: &mut impl rand_core::CryptoRngCore) -> Self {
         let mut mat = Matrix::default();
-        for i in 0..Y {
-            for j in 0..X {
+        for i in 0..X {
+            for j in 0..Y {
                 mat.0[i][j] = RingElem::rand(rng);
             }
         }
@@ -31,14 +32,24 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
         }
     }
 
-    /// Multiplies this matrix by the given vector
+    pub(crate) fn transpose(&self) -> Matrix<Y, X> {
+        let mut ret = Matrix::default();
+        for i in 0..X {
+            for j in 0..Y {
+                ret.0[j][i] = self.0[i][j];
+            }
+        }
+        ret
+    }
+
+    /// Multiplies two matrices
     pub(crate) fn mul<const Z: usize>(&self, other: &Matrix<Y, Z>) -> Matrix<X, Z> {
         let mut result = Matrix::default();
-        for j in 0..X {
-            for i in 0..Y {
+        for i in 0..X {
+            for j in 0..Y {
                 for k in 0..Z {
-                    let prod = &self.0[i][j] * &other.0[k][i];
-                    result.0[k][j] = &result.0[k][j] + &prod;
+                    let prod = &self.0[i][j] * &other.0[j][k];
+                    result.0[i][k] = &result.0[i][k] + &prod;
                 }
             }
         }
@@ -49,11 +60,11 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     /// Multiplies the transpose of this matrix by the given vector
     pub(crate) fn mul_transpose<const Z: usize>(&self, other: &Matrix<X, Z>) -> Matrix<Y, Z> {
         let mut result = Matrix::default();
-        for i in 0..Y {
-            for j in 0..X {
+        for i in 0..X {
+            for j in 0..Y {
                 for k in 0..Z {
-                    let prod = &self.0[i][j] * &other.0[k][j];
-                    result.0[k][i] = &result.0[k][i] + &prod;
+                    let prod = &self.0[i][j] * &other.0[i][k];
+                    result.0[j][k] = &result.0[j][k] + &prod;
                 }
             }
         }
@@ -73,8 +84,8 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     pub(crate) fn to_bytes(&self, out_buf: &mut [u8], bits_per_elem: usize) {
         assert_eq!(out_buf.len(), X * Y * bits_per_elem * RING_DEG / 8);
         let mut chunk_iter = out_buf.chunks_mut(bits_per_elem * RING_DEG / 8);
-        for i in 0..Y {
-            for j in 0..X {
+        for i in 0..X {
+            for j in 0..Y {
                 let out_chunk = chunk_iter.next().unwrap();
                 self.0[i][j].to_bytes(out_chunk, bits_per_elem);
             }
@@ -86,8 +97,8 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
         let mut result = Matrix::default();
 
         let mut chunk_iter = bytes.chunks(bits_per_elem * RING_DEG / 8);
-        for i in 0..Y {
-            for j in 0..X {
+        for i in 0..X {
+            for j in 0..Y {
                 let chunk = chunk_iter.next().unwrap();
                 result.0[i][j] = RingElem::from_bytes(chunk, bits_per_elem);
             }
@@ -102,8 +113,8 @@ impl<'a, const X: usize, const Y: usize> core::ops::Add<&'a Matrix<X, Y>> for &'
 
     fn add(self, other: &'a Matrix<X, Y>) -> Self::Output {
         let mut result = Matrix::default();
-        for i in 0..Y {
-            for j in 0..X {
+        for i in 0..X {
+            for j in 0..Y {
                 result.0[i][j] = &self.0[i][j] + &other.0[i][j];
             }
         }
@@ -115,16 +126,6 @@ impl<'a, const X: usize, const Y: usize> core::ops::Add<&'a Matrix<X, Y>> for &'
 #[cfg(test)]
 mod test {
     use super::*;
-
-    fn transpose_mat<const X: usize, const Y: usize>(mat: &Matrix<X, Y>) -> Matrix<Y, X> {
-        let mut ret = Matrix::default();
-        for i in 0..Y {
-            for j in 0..X {
-                ret.0[j][i] = mat.0[i][j];
-            }
-        }
-        ret
-    }
 
     // Checks that mul and mul_transpose distribute over addition on the RHS
     #[test]
@@ -168,14 +169,14 @@ mod test {
         let mat1 = Matrix::<X, Y>::rand(&mut rng);
         let mat2 = Matrix::<X, Z>::rand(&mut rng);
         let prod1 = mat1.mul_transpose(&mat2);
-        let prod2 = transpose_mat(&mat2.mul_transpose(&mat1));
+        let prod2 = mat2.mul_transpose(&mat1).transpose();
         assert_eq!(prod1, prod2);
 
         // Check that (AB)^T == A^T B^T
         let mat1 = Matrix::<X, Y>::rand(&mut rng);
         let mat2 = Matrix::<Y, Z>::rand(&mut rng);
-        let prod1 = transpose_mat(&mat1.mul(&mat2));
-        let prod2 = transpose_mat(&mat2).mul(&transpose_mat(&mat1));
+        let prod1 = &mat1.mul(&mat2).transpose();
+        let prod2 = &mat2.transpose().mul(&mat1.transpose());
         assert_eq!(prod1, prod2);
     }
 }
