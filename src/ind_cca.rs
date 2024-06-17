@@ -93,7 +93,7 @@ pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     // r || k = rk
     let (r, k) = rk.split_at(32);
     let r: [u8; 32] = r.try_into().unwrap();
-    let k: [u8; 32] = r.try_into().unwrap();
+    let k: [u8; 32] = k.try_into().unwrap();
 
     // ct = Saber.PKE.Enc_pk(m; r)
     ind_cpa::enc_deterministic::<L, MU, MODULUS_T_BITS>(pk, &m, &r, out_buf);
@@ -133,7 +133,7 @@ pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     // r || k = rk
     let (r, k) = rk.split_at(32);
     let r: [u8; 32] = r.try_into().unwrap();
-    let k: [u8; 32] = r.try_into().unwrap();
+    let k: [u8; 32] = k.try_into().unwrap();
 
     // ct' = Saber.PKE.Enc_pk(m; r)
     let mut buf = [0u8; MAX_MODULUS_T_BITS * RING_DEG / 8 + MAX_L * MODULUS_P_BITS * RING_DEG / 8];
