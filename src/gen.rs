@@ -3,11 +3,7 @@ use crate::{
     ring_arith::{deserialize, RingElem, MODULUS_Q_BITS, RING_DEG},
 };
 
-use rand_core::CryptoRngCore;
-use sha3::{
-    digest::{ExtendableOutput, Update, XofReader},
-    Shake128,
-};
+use sha3::{digest::ExtendableOutput, Shake128};
 
 /// The maximum possible μ value is μ=10, set by Lightsaber
 const MAX_MU: usize = 10;

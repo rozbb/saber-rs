@@ -5,6 +5,7 @@ use crate::{
 };
 
 use rand_core::CryptoRngCore;
+use sha3::{digest::ExtendableOutput, Shake128};
 
 const H1_VAL: u16 = 1 << (MODULUS_Q_BITS - MODULUS_P_BITS - 1);
 
@@ -30,12 +31,17 @@ impl<const L: usize> IndCpaSecretKey<L> {
 
 impl<const L: usize> IndCpaPublicKey<L> {
     pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
-        assert_eq!(out_buf.len(), Self::serialized_len());
+        let out_size = Self::serialized_len();
+        assert_eq!(out_buf.len(), out_size);
 
+        // We write out the LWR sample and then the seed. The spec actually said to do the opposite, but the reference impl does it this way
+        // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/SABER_indcpa.c#L42
+
+        // Write out the LWR sample
+        self.vec
+            .to_bytes(&mut out_buf[..out_size - 32], MODULUS_P_BITS);
         // Write out the pubkey seed
-        out_buf[..32].copy_from_slice(&self.seed);
-        // Write out the rest of the pubkey
-        self.vec.to_bytes(&mut out_buf[32..], MODULUS_P_BITS);
+        out_buf[out_size - 32..].copy_from_slice(&self.seed);
     }
 
     pub(crate) fn serialized_len() -> usize {
@@ -49,9 +55,13 @@ pub(crate) fn gen_keypair<const L: usize, const MU: usize>(
     rng: &mut impl CryptoRngCore,
 ) -> (IndCpaSecretKey<L>, IndCpaPublicKey<L>) {
     let mut matrix_seed = [0u8; 32];
+    let mut matrix_seed_unhashed = [0u8; 32];
     let mut secret_seed = [0u8; 32];
-    rng.fill_bytes(&mut matrix_seed);
+    rng.fill_bytes(&mut matrix_seed_unhashed);
     rng.fill_bytes(&mut secret_seed);
+
+    // Before using the matrix seed, we need to hash it
+    Shake128::digest_xof(&matrix_seed_unhashed, &mut matrix_seed);
 
     let mat_a = gen_matrix_from_seed::<L>(&matrix_seed);
     let vec_s = gen_secret_from_seed::<L, MU>(&secret_seed);
