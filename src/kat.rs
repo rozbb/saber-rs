@@ -109,13 +109,9 @@ fn drbg() {
     assert_eq!(buf, ref1);
 }
 
-#[test]
-fn kat() {
-    const L: usize = 3;
-    const MODULUS_BITS_T: usize = 4;
-    const MU: usize = 8;
-
-    let kat_json_file = std::fs::File::open("PQCkemKAT_2304.rsp.json").unwrap();
+/// Opens the given RSP file and tests our impl against the given vectors
+fn kat_helper<const L: usize, const MODULUS_BITS_T: usize, const MU: usize>(filename: &str) {
+    let kat_json_file = std::fs::File::open(filename).unwrap();
     let test_vectors = serde_json::from_reader::<_, Vec<TestVector>>(kat_json_file).unwrap();
 
     for tv in test_vectors {
@@ -133,5 +129,39 @@ fn kat() {
         let mut ct_buf = vec![0u8; ciphertext_size::<L, MU, MODULUS_BITS_T>()];
         let ss1 = encap::<L, MU, MODULUS_BITS_T>(&mut rng, &pk, &mut ct_buf);
         assert_eq!(ct_buf, tv.ct, "ciphertexts do no match");
+
+        let ss2 = decap::<L, MU, MODULUS_BITS_T>(&sk, &ct_buf);
+        assert_eq!(ss1, ss2);
+        assert_eq!(ss1, tv.ss.as_slice(), "shared secrets do not match");
     }
+}
+
+#[test]
+fn kat_lightsaber() {
+    let filename = "PQCkemKAT_1568.rsp.json";
+    const L: usize = 3;
+    const MODULUS_BITS_T: usize = 3;
+    const MU: usize = 10;
+
+    kat_helper::<L, MODULUS_BITS_T, MU>(filename);
+}
+
+#[test]
+fn kat_saber() {
+    let filename = "PQCkemKAT_2304.rsp.json";
+    const L: usize = 3;
+    const MODULUS_BITS_T: usize = 4;
+    const MU: usize = 8;
+
+    kat_helper::<L, MODULUS_BITS_T, MU>(filename);
+}
+
+#[test]
+fn kat_firesaber() {
+    let filename = "PQCkemKAT_3040.rsp.json";
+    const L: usize = 4;
+    const MODULUS_BITS_T: usize = 6;
+    const MU: usize = 6;
+
+    kat_helper::<L, MODULUS_BITS_T, MU>(filename);
 }
