@@ -27,21 +27,24 @@ impl<const L: usize> IndCcaSecretKey<L> {
 
     pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
         assert_eq!(out_buf.len(), Self::serialized_len());
+        let rest = out_buf;
 
-        let mut idx = 32;
-        out_buf[..idx].copy_from_slice(&self.z);
+        // Serialization order, according to reference impl, is sk, pk, hash_pk, z
+        // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L12-L25
 
-        let delta = 32;
-        out_buf[idx..idx + delta].copy_from_slice(&self.hash_pk);
-        idx += delta;
+        let (out_cpa_sk, rest) = rest.split_at_mut(IndCpaSecretKey::<L>::serialized_len());
+        self.cpa_sk.to_bytes(out_cpa_sk);
 
-        let delta = IndCpaPublicKey::<L>::serialized_len();
-        self.cpa_pk.to_bytes(&mut out_buf[idx..idx + delta]);
-        idx += delta;
+        let (out_cpa_pk, rest) = rest.split_at_mut(IndCpaPublicKey::<L>::serialized_len());
+        self.cpa_pk.to_bytes(out_cpa_pk);
 
-        let delta = IndCpaSecretKey::<L>::serialized_len();
-        self.cpa_sk.to_bytes(&mut out_buf[idx..idx + delta]);
-        idx += delta;
+        let (out_hash_pk, rest) = rest.split_at_mut(32);
+        out_hash_pk.copy_from_slice(&self.hash_pk);
+
+        let (out_z, rest) = rest.split_at_mut(32);
+        out_z.copy_from_slice(&self.z);
+
+        assert_eq!(rest.len(), 0);
     }
 }
 

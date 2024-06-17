@@ -112,6 +112,14 @@ pub(crate) fn dec<const L: usize, const MODULUS_T_BITS: usize>(
     m
 }
 
+pub(crate) const fn ciphertext_size<
+    const L: usize,
+    const MU: usize,
+    const MODULUS_T_BITS: usize,
+>() -> usize {
+    MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8
+}
+
 pub(crate) fn enc_deterministic<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     pk: &IndCpaPublicKey<L>,
     msg: &[u8; 32],
