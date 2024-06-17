@@ -5,7 +5,10 @@ use crate::{
 };
 
 use rand_core::CryptoRngCore;
-use sha3::{Digest, Sha3_256};
+use sha3::{
+    digest::{Digest, ExtendableOutput},
+    Sha3_256, Shake128,
+};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
 pub type IndCcaPublicKey<const L: usize> = IndCpaPublicKey<L>;
@@ -76,8 +79,10 @@ pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     pk: &IndCcaPublicKey<L>,
     out_buf: &mut [u8],
 ) -> SharedSecret {
-    let mut m = [0u8; 32];
-    rng.fill_bytes(&mut m);
+    // Before using the message, we need to hash it
+    let mut m_unhashed = [0u8; 32];
+    rng.fill_bytes(&mut m_unhashed);
+    let m = Sha3_256::digest(m_unhashed).into();
 
     // Hash the public key
     let mut buf = [0u8; 32 + MAX_L * MODULUS_P_BITS * RING_DEG / 8];
@@ -85,18 +90,22 @@ pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     pk.to_bytes(pk_bytes);
     let hash_pk = Sha3_256::digest(pk_bytes);
 
-    // rk = SHA3-512(hash_pk || m)
-    let rk = {
+    // kr = SHA3-512(m || hash_pk)
+    // The spec has the input order switched, but we're following the reference impl
+    // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L35-L39
+    let kr = {
         let mut h = sha3::Sha3_512::new();
-        h.update(hash_pk);
         h.update(m);
+        h.update(hash_pk);
         h.finalize()
     };
 
-    // r || k = rk
-    let (r, k) = rk.split_at(32);
-    let r: [u8; 32] = r.try_into().unwrap();
+    // k || r = kr
+    // The spec has the order switched, but, again, we're following the reference impl
+    // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L42-L46
+    let (k, r) = kr.split_at(32);
     let k: [u8; 32] = k.try_into().unwrap();
+    let r: [u8; 32] = r.try_into().unwrap();
 
     // ct = Saber.PKE.Enc_pk(m; r)
     ind_cpa::enc_deterministic::<L, MU, MODULUS_T_BITS>(pk, &m, &r, out_buf);
@@ -125,18 +134,22 @@ pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
 
     let m = ind_cpa::dec::<L, MODULUS_T_BITS>(&sk.cpa_sk, ciphertext);
 
-    // rk = SHA3-512(hash_pk || m)
-    let rk = {
+    // kr = SHA3-512(m || hash_pk)
+    // The spec has the input order switched, but we're following the reference impl
+    // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L35-L39
+    let kr = {
         let mut h = sha3::Sha3_512::new();
-        h.update(sk.hash_pk);
         h.update(m);
+        h.update(sk.hash_pk);
         h.finalize()
     };
 
-    // r || k = rk
-    let (r, k) = rk.split_at(32);
-    let r: [u8; 32] = r.try_into().unwrap();
+    // k || r = kr
+    // The spec has the order switched, but, again, we're following the reference impl
+    // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L42-L46
+    let (k, r) = kr.split_at(32);
     let k: [u8; 32] = k.try_into().unwrap();
+    let r: [u8; 32] = r.try_into().unwrap();
 
     // ct' = Saber.PKE.Enc_pk(m; r)
     let mut buf = [0u8; MAX_MODULUS_T_BITS * RING_DEG / 8 + MAX_L * MODULUS_P_BITS * RING_DEG / 8];

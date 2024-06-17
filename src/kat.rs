@@ -1,7 +1,7 @@
 //! This module contains code for running known-answer tests (KATs)
 
 use crate::{
-    ind_cca::{encap, IndCcaPublicKey, IndCcaSecretKey},
+    ind_cca::{decap, encap, IndCcaPublicKey, IndCcaSecretKey},
     ind_cpa::ciphertext_size,
 };
 
@@ -131,9 +131,7 @@ fn kat() {
         assert_eq!(pk_buf, tv.pk, "public keys do not match");
 
         let mut ct_buf = vec![0u8; ciphertext_size::<L, MU, MODULUS_BITS_T>()];
-        encap::<L, MU, MODULUS_BITS_T>(&mut rng, &pk, &mut ct_buf);
+        let ss1 = encap::<L, MU, MODULUS_BITS_T>(&mut rng, &pk, &mut ct_buf);
         assert_eq!(ct_buf, tv.ct, "ciphertexts do no match");
-
-        break;
     }
 }

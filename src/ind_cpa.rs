@@ -87,10 +87,9 @@ pub(crate) fn dec<const L: usize, const MODULUS_T_BITS: usize>(
 ) -> [u8; 32] {
     assert_eq!(
         ciphertext.len(),
-        MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8
+        L * MODULUS_P_BITS * RING_DEG / 8 + MODULUS_T_BITS * RING_DEG / 8
     );
-
-    let (c_bytes, bprime_bytes) = ciphertext.split_at(MODULUS_T_BITS * RING_DEG / 8);
+    let (bprime_bytes, c_bytes) = ciphertext.split_at(L * MODULUS_P_BITS * RING_DEG / 8);
 
     let bprime: Matrix<L, 1> = Matrix::from_bytes(bprime_bytes, MODULUS_P_BITS);
 
@@ -128,7 +127,7 @@ pub(crate) fn enc_deterministic<const L: usize, const MU: usize, const MODULUS_T
 ) {
     assert_eq!(
         out_buf.len(),
-        MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8
+        L * MODULUS_P_BITS * RING_DEG / 8 + MODULUS_T_BITS * RING_DEG / 8
     );
 
     let mat_a = gen_matrix_from_seed::<L>(&pk.seed);
@@ -152,14 +151,11 @@ pub(crate) fn enc_deterministic<const L: usize, const MU: usize, const MODULUS_T
     c.wrapping_add_to_all(H1_VAL);
     c.shift_right(MODULUS_P_BITS - MODULUS_T_BITS);
 
-    c.to_bytes(
-        &mut out_buf[..MODULUS_T_BITS * RING_DEG / 8],
-        MODULUS_T_BITS,
-    );
-    bprime.to_bytes(
-        &mut out_buf[MODULUS_T_BITS * RING_DEG / 8..],
-        MODULUS_P_BITS,
-    );
+    // Serialization order accoring to the reference implementation is b' || c
+    // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/SABER_indcpa.c#L68-L79
+    let (bprime_buf, c_buf) = out_buf.split_at_mut(L * MODULUS_P_BITS * RING_DEG / 8);
+    bprime.to_bytes(bprime_buf, MODULUS_P_BITS);
+    c.to_bytes(c_buf, MODULUS_T_BITS);
 }
 
 #[cfg(test)]
