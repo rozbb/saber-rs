@@ -18,19 +18,28 @@ pub struct IndCpaPublicKey<const L: usize> {
 
 impl<const L: usize> IndCpaSecretKey<L> {
     pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
-        assert_eq!(out_buf.len(), L * MODULUS_Q_BITS * RING_DEG / 8);
+        assert_eq!(out_buf.len(), Self::serialized_len());
+
         self.0.to_bytes(out_buf, MODULUS_Q_BITS);
+    }
+
+    pub(crate) fn serialized_len() -> usize {
+        L * MODULUS_Q_BITS * RING_DEG / 8
     }
 }
 
 impl<const L: usize> IndCpaPublicKey<L> {
     pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
-        assert_eq!(out_buf.len(), 32 + L * MODULUS_P_BITS * RING_DEG / 8);
+        assert_eq!(out_buf.len(), Self::serialized_len());
 
         // Write out the pubkey seed
         out_buf[..32].copy_from_slice(&self.seed);
         // Write out the rest of the pubkey
         self.vec.to_bytes(&mut out_buf[32..], MODULUS_P_BITS);
+    }
+
+    pub(crate) fn serialized_len() -> usize {
+        32 + L * MODULUS_P_BITS * RING_DEG / 8
     }
 }
 
