@@ -3,9 +3,9 @@
 extern crate std;
 
 mod gen;
-pub mod ind_cca;
-mod ind_cpa;
+pub mod kem;
 mod matrix_arith;
+mod pke;
 mod ring_arith;
 
 #[cfg(test)]

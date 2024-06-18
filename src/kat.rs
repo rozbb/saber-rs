@@ -1,8 +1,8 @@
 //! This module contains code for running known-answer tests (KATs)
 
 use crate::{
-    ind_cca::{decap, encap, IndCcaPublicKey, IndCcaSecretKey},
-    ind_cpa::ciphertext_size,
+    kem::{decap, encap, IndCcaPublicKey, IndCcaSecretKey},
+    pke::ciphertext_size,
 };
 
 use std::{string::String, vec::Vec};
@@ -116,7 +116,7 @@ fn kat_helper<const L: usize, const MODULUS_BITS_T: usize, const MU: usize>(file
 
     for tv in test_vectors {
         let mut rng = KatRng::new(&tv.seed);
-        let (sk, pk) = crate::ind_cca::gen_keypair::<L, MU>(&mut rng);
+        let (sk, pk) = crate::kem::gen_keypair::<L, MU>(&mut rng);
 
         let mut sk_buf = vec![0u8; IndCcaSecretKey::<L>::serialized_len()];
         sk.to_bytes(&mut sk_buf);

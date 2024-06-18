@@ -1,6 +1,6 @@
 use crate::{
     gen::MAX_L,
-    ind_cpa::{self, IndCpaPublicKey, IndCpaSecretKey},
+    pke::{self, IndCpaPublicKey, IndCpaSecretKey},
     MODULUS_P_BITS, RING_DEG,
 };
 
@@ -51,7 +51,7 @@ impl<const L: usize> IndCcaSecretKey<L> {
 pub fn gen_keypair<const L: usize, const MU: usize>(
     rng: &mut impl CryptoRngCore,
 ) -> (IndCcaSecretKey<L>, IndCcaPublicKey<L>) {
-    let (sk, pk) = ind_cpa::gen_keypair::<L, MU>(rng);
+    let (sk, pk) = pke::gen_keypair::<L, MU>(rng);
 
     let mut buf = [0u8; 32 + MAX_L * MODULUS_P_BITS * RING_DEG / 8];
     let pk_bytes = &mut buf[..32 + L * MODULUS_P_BITS * RING_DEG / 8];
@@ -105,7 +105,7 @@ pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     let r: [u8; 32] = r.try_into().unwrap();
 
     // ct = Saber.PKE.Enc_pk(m; r)
-    ind_cpa::enc_deterministic::<L, MU, MODULUS_T_BITS>(pk, &m, &r, out_buf);
+    pke::enc_deterministic::<L, MU, MODULUS_T_BITS>(pk, &m, &r, out_buf);
 
     // r' = SHA3-256(ct)
     let rprime = Sha3_256::digest(out_buf);
@@ -131,7 +131,7 @@ pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
         MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8
     );
 
-    let m = ind_cpa::dec::<L, MODULUS_T_BITS>(&sk.cpa_sk, ciphertext);
+    let m = pke::dec::<L, MODULUS_T_BITS>(&sk.cpa_sk, ciphertext);
 
     // kr = SHA3-512(m || hash_pk)
     // The spec has the hash input order switched, but we're following the reference impl
@@ -154,7 +154,7 @@ pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     let mut buf = [0u8; MAX_MODULUS_T_BITS * RING_DEG / 8 + MAX_L * MODULUS_P_BITS * RING_DEG / 8];
     let reconstructed_ct =
         &mut buf[..MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8];
-    ind_cpa::enc_deterministic::<L, MU, MODULUS_T_BITS>(&sk.cpa_pk, &m, &r, reconstructed_ct);
+    pke::enc_deterministic::<L, MU, MODULUS_T_BITS>(&sk.cpa_pk, &m, &r, reconstructed_ct);
 
     // r' = SHA3-256(ct)
     let rprime = Sha3_256::digest(ciphertext);
