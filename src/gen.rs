@@ -1,15 +1,11 @@
 use crate::{
+    consts::{MAX_L, MAX_MU, MODULUS_Q_BITS, RING_DEG},
     matrix_arith::Matrix,
-    ring_arith::{deserialize, RingElem, MODULUS_Q_BITS, RING_DEG},
+    ring_arith::RingElem,
+    util::deserialize,
 };
 
 use sha3::{digest::ExtendableOutput, Shake128};
-
-/// The maximum possible μ value is μ=10, set by Lightsaber
-const MAX_MU: usize = 10;
-
-/// The maximum possible l value is l=4, set by FireSaber
-pub(crate) const MAX_L: usize = 4;
 
 // Algorithm 16, GenSecret
 /// Uses a random seed to generate an MLWR secret, i.e., an element in R^ℓ whose entries are

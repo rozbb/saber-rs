@@ -1,14 +1,15 @@
 use crate::{
-    gen::{gen_matrix_from_seed, gen_secret_from_seed, MAX_L},
+    consts::MAX_L,
+    consts::MAX_MODULUS_T_BITS,
+    consts::{MODULUS_P_BITS, MODULUS_Q_BITS, RING_DEG},
+    gen::{gen_matrix_from_seed, gen_secret_from_seed},
     matrix_arith::Matrix,
-    ring_arith::{deserialize, RingElem, MODULUS_P_BITS, MODULUS_Q_BITS, RING_DEG},
+    ring_arith::RingElem,
+    util::deserialize,
 };
 
 use rand_core::CryptoRngCore;
 use sha3::{digest::ExtendableOutput, Shake128};
-
-// The largest log(T) value, achieved by Firesaber
-const MAX_MODULUS_T_BITS: usize = 6;
 
 const H1_VAL: u16 = 1 << (MODULUS_Q_BITS - MODULUS_P_BITS - 1);
 
@@ -61,11 +62,13 @@ pub(crate) const fn max_pke_pubkey_serialized_len() -> usize {
 
 /// The maximum length of a ciphertext (PKE or KEM, since they're the same), for all parameter choices
 pub const fn max_ciphertext_len() -> usize {
+    // b' is in R^l_P and c is in R_T
     MAX_MODULUS_T_BITS * RING_DEG / 8 + MAX_L * MODULUS_P_BITS * RING_DEG / 8
 }
 
 /// The length of a ciphertext (PKE or KEM, since they're the same) for a given parameter choice
 pub const fn ciphertext_len<const L: usize, const MODULUS_T_BITS: usize>() -> usize {
+    // b' is in R^l_P and c is in R_T
     L * MODULUS_P_BITS * RING_DEG / 8 + MODULUS_T_BITS * RING_DEG / 8
 }
 
@@ -175,15 +178,16 @@ pub(crate) fn encrypt_deterministic<
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::consts::*;
 
     use rand::RngCore;
 
     // Tests that Decrypt(Encrypt(m)) == m
     #[test]
     fn encryption_correctness() {
-        test_enc_dec::<2, 3, 10>();
-        test_enc_dec::<3, 4, 8>();
-        test_enc_dec::<4, 6, 6>();
+        test_enc_dec::<LIGHTSABER_L, LIGHTSABER_MODULUS_T_BITS, LIGHTSABER_MU>();
+        test_enc_dec::<SABER_L, SABER_MODULUS_T_BITS, SABER_MU>();
+        test_enc_dec::<FIRESABER_L, FIRESABER_MODULUS_T_BITS, FIRESABER_MU>();
     }
 
     // Helper function that encrypts and decrypts a random 32-byte message

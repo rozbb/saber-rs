@@ -192,12 +192,13 @@ pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::consts::*;
 
     #[test]
     fn cca_correctness() {
-        test_encap_decap::<2, 3, 10>();
-        test_encap_decap::<3, 4, 8>();
-        test_encap_decap::<4, 6, 6>();
+        test_encap_decap::<LIGHTSABER_L, LIGHTSABER_MODULUS_T_BITS, LIGHTSABER_MU>();
+        test_encap_decap::<SABER_L, SABER_MODULUS_T_BITS, SABER_MU>();
+        test_encap_decap::<FIRESABER_L, FIRESABER_MODULUS_T_BITS, FIRESABER_MU>();
     }
 
     fn test_encap_decap<const L: usize, const MODULUS_T_BITS: usize, const MU: usize>() {

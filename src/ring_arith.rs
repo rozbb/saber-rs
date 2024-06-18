@@ -1,18 +1,11 @@
+use crate::{
+    consts::{MODULUS_Q, RING_DEG},
+    util::{deserialize, serialize},
+};
+
 use core::ops::{Add, Mul, Sub};
 
 use rand_core::CryptoRngCore;
-
-/// The modulus q of our base ring Z/2^13 Z
-pub(crate) const MODULUS_Q: u16 = 1 << 13;
-
-/// The bitlength of the modulus q
-pub(crate) const MODULUS_Q_BITS: usize = 13;
-
-/// The bitlength of the modulus p
-pub const MODULUS_P_BITS: usize = 10;
-
-/// The degree of the polynomial ring over Z/2^13 Z
-pub const RING_DEG: usize = 256;
 
 /// The degree (-1) of a polynomial at which point we revert to schoolbook multiplication
 const KARATSUBA_THRESHOLD: usize = 128;
@@ -187,73 +180,6 @@ fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     result
 }
 
-/// Deserializes the given bitstring into a u16 array. Every element of the array has
-/// `bits_per_elem` bits (must be ≤ 16), encoded in the lower bits of the word.
-pub(crate) fn deserialize<const N: usize>(bytes: &[u8], bits_per_elem: usize) -> [u16; N] {
-    assert_eq!(bytes.len(), bits_per_elem * N / 8);
-
-    // We only want the lower bits_per_elem bits to be set in any elem of our output
-    let bitmask = (1 << bits_per_elem) - 1;
-
-    // Accumulate all the bits into p
-    let mut p = [0u16; N];
-    let mut bit_idx = 0;
-    while bit_idx < bits_per_elem * N {
-        let byte_idx = bit_idx / 8;
-        let elem_idx = bit_idx / bits_per_elem;
-        let bit_in_byte = bit_idx % 8;
-        let bit_in_elem = bit_idx % bits_per_elem;
-
-        // Shift the byte we're reading so the first bit we want is the lowest bit
-        let data_to_read = bytes[byte_idx] as u16 >> bit_in_byte;
-        // OR the byte into our element, shifitng to align with the first unused bit in the elem
-        p[elem_idx] |= data_to_read << bit_in_elem;
-
-        // The above might set some high bits we don't want. Clear them now.
-        p[elem_idx] &= bitmask;
-
-        // We have read either: 1) however many bits were remaining in the byte we were
-        // reading, or 2) however many unused bits remained in the current element we were
-        // writing to. Whichever is smaller.
-        let just_read = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
-        bit_idx += just_read;
-    }
-
-    p
-}
-
-/// Serializes the given u16 array into a bitstring. Every element of the array has `bits_per_elem`
-/// bits (must be ≤ 16), encoded in the lower bits of the word.
-pub(crate) fn serialize(data: &[u16], out_buf: &mut [u8], bits_per_elem: usize) {
-    assert_eq!(out_buf.len(), bits_per_elem * data.len() / 8);
-
-    // We only want to write the lower bits_per_elem bits of any element
-    let bitmask = (1 << bits_per_elem) - 1;
-
-    // Write all the bits into the given bytestring
-    let mut bit_idx = 0;
-    while bit_idx < bits_per_elem * data.len() {
-        let byte_idx = bit_idx / 8;
-        let elem_idx = bit_idx / bits_per_elem;
-        let bit_in_byte = bit_idx % 8;
-        let bit_in_elem = bit_idx % bits_per_elem;
-
-        // First clear the unused bits of the element we're going to write
-        let elem_to_read = data[elem_idx] & bitmask;
-        // Then  shift the element we're writing so the first unwritten bit is the lowest bit
-        let elem_to_read = (elem_to_read >> bit_in_elem) as u8;
-
-        // OR the bits into our byte, shifitng to align with the first unused bit in the byte
-        out_buf[byte_idx] |= elem_to_read << bit_in_byte;
-
-        // We just wrote either: 1) however many bits remained in the byte we were
-        // reading, or 2) however many unused bits remained in the current element we were
-        // writing to. Whichever is smaller.
-        let just_wrote = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
-        bit_idx += just_wrote
-    }
-}
-
 impl RingElem {
     pub fn karatsuba_mul(&self, other: &RingElem) -> RingElem {
         karatsuba_mul_helper(&self.0, &other.0)
@@ -283,6 +209,7 @@ impl<'a> Sub for &'a RingElem {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::consts::RING_DEG;
 
     use rand::{thread_rng, Rng, RngCore};
 
