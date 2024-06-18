@@ -1,5 +1,5 @@
 use crate::{
-    gen::{gen_matrix_from_seed, gen_secret_from_seed},
+    gen::{gen_matrix_from_seed, gen_secret_from_seed, MAX_L},
     matrix_arith::Matrix,
     ring_arith::{deserialize, RingElem, MODULUS_P_BITS, MODULUS_Q_BITS, RING_DEG},
 };
@@ -7,20 +7,24 @@ use crate::{
 use rand_core::CryptoRngCore;
 use sha3::{digest::ExtendableOutput, Shake128};
 
+// The largest log(T) value, achieved by Firesaber
+const MAX_MODULUS_T_BITS: usize = 6;
+
 const H1_VAL: u16 = 1 << (MODULUS_Q_BITS - MODULUS_P_BITS - 1);
 
-pub(crate) struct IndCpaSecretKey<const L: usize>(Matrix<L, 1>);
+/// A secret key for the IND-CPA-secure Saber PKE scheme
+pub(crate) struct PkeSecretKey<const L: usize>(Matrix<L, 1>);
 
+/// A public key for the IND-CPA-secure Saber PKE scheme
 #[derive(Clone)]
-pub struct IndCpaPublicKey<const L: usize> {
+pub struct PkePublicKey<const L: usize> {
     seed: [u8; 32],
     vec: Matrix<L, 1>,
 }
 
-impl<const L: usize> IndCpaSecretKey<L> {
+impl<const L: usize> PkeSecretKey<L> {
     pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
         assert_eq!(out_buf.len(), Self::serialized_len());
-
         self.0.to_bytes(out_buf, MODULUS_Q_BITS);
     }
 
@@ -29,7 +33,7 @@ impl<const L: usize> IndCpaSecretKey<L> {
     }
 }
 
-impl<const L: usize> IndCpaPublicKey<L> {
+impl<const L: usize> PkePublicKey<L> {
     pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
         let out_size = Self::serialized_len();
         assert_eq!(out_buf.len(), out_size);
@@ -44,16 +48,32 @@ impl<const L: usize> IndCpaPublicKey<L> {
         out_buf[out_size - 32..].copy_from_slice(&self.seed);
     }
 
+    /// The length of a serialized public key
     pub(crate) fn serialized_len() -> usize {
         32 + L * MODULUS_P_BITS * RING_DEG / 8
     }
+}
+
+/// The maximum length of a serialized public key, for all parameter choices
+pub(crate) const fn max_pke_pubkey_serialized_len() -> usize {
+    32 + MAX_L * MODULUS_P_BITS * RING_DEG / 8
+}
+
+/// The maximum length of a ciphertext (PKE or KEM, since they're the same), for all parameter choices
+pub const fn max_ciphertext_len() -> usize {
+    MAX_MODULUS_T_BITS * RING_DEG / 8 + MAX_L * MODULUS_P_BITS * RING_DEG / 8
+}
+
+/// The length of a ciphertext (PKE or KEM, since they're the same) for a given parameter choice
+pub const fn ciphertext_len<const L: usize, const MODULUS_T_BITS: usize>() -> usize {
+    L * MODULUS_P_BITS * RING_DEG / 8 + MODULUS_T_BITS * RING_DEG / 8
 }
 
 // Algorithm 17, Saber.PKE.KeyGen
 /// Generates a keypair with a secret from R^ℓ with bionimal parameter μ
 pub(crate) fn gen_keypair<const L: usize, const MU: usize>(
     rng: &mut impl CryptoRngCore,
-) -> (IndCpaSecretKey<L>, IndCpaPublicKey<L>) {
+) -> (PkeSecretKey<L>, PkePublicKey<L>) {
     let mut matrix_seed = [0u8; 32];
     let mut matrix_seed_unhashed = [0u8; 32];
     let mut secret_seed = [0u8; 32];
@@ -73,22 +93,20 @@ pub(crate) fn gen_keypair<const L: usize, const MU: usize>(
     };
 
     (
-        IndCpaSecretKey(vec_s),
-        IndCpaPublicKey {
+        PkeSecretKey(vec_s),
+        PkePublicKey {
             seed: matrix_seed,
             vec: b,
         },
     )
 }
 
-pub(crate) fn dec<const L: usize, const MODULUS_T_BITS: usize>(
-    sk: &IndCpaSecretKey<L>,
+pub(crate) fn decrypt<const L: usize, const MODULUS_T_BITS: usize>(
+    sk: &PkeSecretKey<L>,
     ciphertext: &[u8],
 ) -> [u8; 32] {
-    assert_eq!(
-        ciphertext.len(),
-        L * MODULUS_P_BITS * RING_DEG / 8 + MODULUS_T_BITS * RING_DEG / 8
-    );
+    assert_eq!(ciphertext.len(), ciphertext_len::<L, MODULUS_T_BITS>());
+    // b' is in R^l_P and c is in R_T
     let (bprime_bytes, c_bytes) = ciphertext.split_at(L * MODULUS_P_BITS * RING_DEG / 8);
 
     let bprime: Matrix<L, 1> = Matrix::from_bytes(bprime_bytes, MODULUS_P_BITS);
@@ -111,27 +129,22 @@ pub(crate) fn dec<const L: usize, const MODULUS_T_BITS: usize>(
     m
 }
 
-pub(crate) const fn ciphertext_size<
+/// Encrypts a message with a given public key and randomness (`coins`).
+/// `out_buf` MUST have length `ciphertext_len::<L>()`.
+pub(crate) fn encrypt_deterministic<
     const L: usize,
     const MU: usize,
     const MODULUS_T_BITS: usize,
->() -> usize {
-    MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8
-}
-
-pub(crate) fn enc_deterministic<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
-    pk: &IndCpaPublicKey<L>,
+>(
+    pk: &PkePublicKey<L>,
     msg: &[u8; 32],
-    seed: &[u8; 32],
+    coins: &[u8; 32],
     out_buf: &mut [u8],
 ) {
-    assert_eq!(
-        out_buf.len(),
-        L * MODULUS_P_BITS * RING_DEG / 8 + MODULUS_T_BITS * RING_DEG / 8
-    );
+    assert_eq!(out_buf.len(), ciphertext_len::<L, MODULUS_T_BITS>());
 
     let mat_a = gen_matrix_from_seed::<L>(&pk.seed);
-    let vec_sprime = gen_secret_from_seed::<L, MU>(seed);
+    let vec_sprime = gen_secret_from_seed::<L, MU>(coins);
 
     let bprime = {
         let mut prod = mat_a.mul(&vec_sprime);
@@ -153,6 +166,7 @@ pub(crate) fn enc_deterministic<const L: usize, const MU: usize, const MODULUS_T
 
     // Serialization order accoring to the reference implementation is b' || c
     // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/SABER_indcpa.c#L68-L79
+    // b' is in R^l_P and c is in R_T
     let (bprime_buf, c_buf) = out_buf.split_at_mut(L * MODULUS_P_BITS * RING_DEG / 8);
     bprime.to_bytes(bprime_buf, MODULUS_P_BITS);
     c.to_bytes(c_buf, MODULUS_T_BITS);
@@ -164,14 +178,15 @@ mod test {
 
     use rand::RngCore;
 
-    // Tests that Dec(Enc(m)) == m
+    // Tests that Decrypt(Encrypt(m)) == m
     #[test]
-    fn enc_dec() {
+    fn encryption_correctness() {
         test_enc_dec::<2, 3, 10>();
         test_enc_dec::<3, 4, 8>();
         test_enc_dec::<4, 6, 6>();
     }
 
+    // Helper function that encrypts and decrypts a random 32-byte message
     fn test_enc_dec<const L: usize, const MODULUS_T_BITS: usize, const MU: usize>() {
         let mut rng = rand::thread_rng();
 
@@ -185,8 +200,8 @@ mod test {
             let mut ct_buf =
                 vec![0u8; MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8];
 
-            enc_deterministic::<L, MU, MODULUS_T_BITS>(&pk, &msg, &enc_seed, &mut ct_buf);
-            let recovered_msg = dec::<L, MODULUS_T_BITS>(&sk, &ct_buf);
+            encrypt_deterministic::<L, MU, MODULUS_T_BITS>(&pk, &msg, &enc_seed, &mut ct_buf);
+            let recovered_msg = decrypt::<L, MODULUS_T_BITS>(&sk, &ct_buf);
             assert_eq!(msg, recovered_msg);
         }
     }

@@ -39,7 +39,7 @@ impl RingElem {
         RingElem(result)
     }
 
-    /// Deserializes a ring element, treating each element as having only `bits_per_elem` bits.
+    /// Deserializes a ring element, treating each coefficient as having only `bits_per_elem` bits.
     /// In Saber terms, this runs BS2POLYk where k = bits_per_elem
     pub(crate) fn from_bytes(bytes: &[u8], bits_per_elem: usize) -> Self {
         assert_eq!(bytes.len(), bits_per_elem * RING_DEG / 8);
@@ -47,7 +47,7 @@ impl RingElem {
         RingElem(arr)
     }
 
-    /// Serializes this ring element, treating each element as having only `bits_per_elem` bits.
+    /// Serializes this ring element, treating each coefficient as having only `bits_per_elem` bits.
     /// In Saber terms, this runs POLYk2BS where k = bits_per_elem
     pub(crate) fn to_bytes(self, out_buf: &mut [u8], bits_per_elem: usize) {
         assert_eq!(out_buf.len(), bits_per_elem * RING_DEG / 8);

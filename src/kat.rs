@@ -1,8 +1,8 @@
 //! This module contains code for running known-answer tests (KATs)
 
 use crate::{
-    kem::{decap, encap, IndCcaPublicKey, IndCcaSecretKey},
-    pke::ciphertext_size,
+    kem::{decap, encap, IndCcaSecretKey, KemPublicKey},
+    pke::ciphertext_len,
 };
 
 use std::{string::String, vec::Vec};
@@ -122,11 +122,11 @@ fn kat_helper<const L: usize, const MODULUS_BITS_T: usize, const MU: usize>(file
         sk.to_bytes(&mut sk_buf);
         assert_eq!(sk_buf, tv.sk, "secret keys do not match");
 
-        let mut pk_buf = vec![0u8; IndCcaPublicKey::<L>::serialized_len()];
+        let mut pk_buf = vec![0u8; KemPublicKey::<L>::serialized_len()];
         pk.to_bytes(&mut pk_buf);
         assert_eq!(pk_buf, tv.pk, "public keys do not match");
 
-        let mut ct_buf = vec![0u8; ciphertext_size::<L, MU, MODULUS_BITS_T>()];
+        let mut ct_buf = vec![0u8; ciphertext_len::<L, MODULUS_BITS_T>()];
         let ss1 = encap::<L, MU, MODULUS_BITS_T>(&mut rng, &pk, &mut ct_buf);
         assert_eq!(ct_buf, tv.ct, "ciphertexts do no match");
 

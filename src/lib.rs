@@ -8,7 +8,8 @@ mod matrix_arith;
 mod pke;
 mod ring_arith;
 
+// Known-answer tests
 #[cfg(test)]
 mod kat;
 
-pub use ring_arith::*;
+pub use pke::{ciphertext_len, max_ciphertext_len};

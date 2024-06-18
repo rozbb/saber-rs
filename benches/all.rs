@@ -1,24 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use rand::thread_rng;
-use saber::{kem, RingElem, MODULUS_P_BITS, RING_DEG};
-
-pub fn mul(c: &mut Criterion) {
-    let mut rng = thread_rng();
-    c.bench_function("schoolbook-mul", |b| {
-        b.iter(|| {
-            let r1 = RingElem::rand(&mut rng);
-            let r2 = RingElem::rand(&mut rng);
-            r1.schoolbook_mul(&r2)
-        })
-    });
-    c.bench_function("karatsuba-mul", |b| {
-        b.iter(|| {
-            let r1 = RingElem::rand(&mut rng);
-            let r2 = RingElem::rand(&mut rng);
-            r1.karatsuba_mul(&r2)
-        })
-    });
-}
+use saber::{ciphertext_len, kem};
 
 pub fn cca(c: &mut Criterion) {
     const L: usize = 2;
@@ -33,7 +14,7 @@ pub fn cca(c: &mut Criterion) {
     });
     let (sk, pk) = kem::gen_keypair::<L, MU>(&mut rng);
 
-    let mut ct_buf = vec![0u8; MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8];
+    let mut ct_buf = vec![0u8; ciphertext_len::<L, MODULUS_T_BITS>()];
 
     c.bench_function("encap", |b| {
         b.iter(|| kem::encap::<L, MU, MODULUS_T_BITS>(&mut rng, &pk, &mut ct_buf))
