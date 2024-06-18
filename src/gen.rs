@@ -56,6 +56,7 @@ pub(crate) fn gen_matrix_from_seed<const L: usize>(seed: &[u8; 32]) -> Matrix<L,
 
     let mut mat = Matrix::default();
     for (idx, chunk) in buf.chunks(RING_DEG * MODULUS_Q_BITS / 8).enumerate() {
+        // TODO: optimizaiton; we only need to squeeze enough bytes for a single entry at a time
         let polyn = RingElem::from_bytes(chunk, MODULUS_Q_BITS);
 
         let i = idx / L;

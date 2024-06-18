@@ -17,6 +17,7 @@ pub const MODULUS_P_BITS: usize = 10;
 /// The degree of the polynomial ring over Z/2^13 Z
 pub const RING_DEG: usize = 256;
 
+/// The degree (-1) of a polynomial at which point we revert to schoolbook multiplication
 const KARATSUBA_THRESHOLD: usize = 128;
 
 /// An element of the ring (Z/2^13 Z)[X] / (X^256 + 1)
@@ -41,12 +42,16 @@ impl RingElem {
         RingElem(result)
     }
 
+    /// Deserializes a ring element, treating each element as having only `bits_per_elem` bits.
+    /// In Saber terms, this runs BS2POLYk where k = bits_per_elem
     pub(crate) fn from_bytes(bytes: &[u8], bits_per_elem: usize) -> Self {
         assert_eq!(bytes.len(), bits_per_elem * RING_DEG / 8);
         let arr = deserialize(bytes, bits_per_elem);
         RingElem(arr)
     }
 
+    /// Serializes this ring element, treating each element as having only `bits_per_elem` bits.
+    /// In Saber terms, this runs POLYk2BS where k = bits_per_elem
     pub(crate) fn to_bytes(self, out_buf: &mut [u8], bits_per_elem: usize) {
         assert_eq!(out_buf.len(), bits_per_elem * RING_DEG / 8);
         serialize(&self.0, out_buf, bits_per_elem)
@@ -95,20 +100,26 @@ impl<'a> Mul for &'a RingElem {
     }
 }
 
+/// Adds the two inputs, treating them as the lower coefficients of a RingElem
 fn poly_add(x: &[u16], y: &[u16]) -> RingElem {
     let mut ret = RingElem::default();
     let outlen = core::cmp::max(x.len(), y.len());
     for i in 0..outlen {
-        ret.0[i] = x.get(i).unwrap_or(&0).wrapping_add(*y.get(i).unwrap_or(&0))
+        let lhs = x.get(i).unwrap_or(&0);
+        let rhs = y.get(i).unwrap_or(&0);
+        ret.0[i] = lhs.wrapping_add(*rhs);
     }
     ret
 }
 
+/// Subtracts the two inputs, treating them as the lower coefficients of a RingElem
 fn poly_sub(x: &[u16], y: &[u16]) -> RingElem {
     let mut ret = RingElem::default();
     let outlen = core::cmp::max(x.len(), y.len());
     for i in 0..outlen {
-        ret.0[i] = x.get(i).unwrap_or(&0).wrapping_sub(*y.get(i).unwrap_or(&0))
+        let lhs = x.get(i).unwrap_or(&0);
+        let rhs = y.get(i).unwrap_or(&0);
+        ret.0[i] = lhs.wrapping_sub(*rhs);
     }
     ret
 }
@@ -129,7 +140,7 @@ fn mul_by_xpow(p: &RingElem, shift: usize) -> RingElem {
     ret
 }
 
-// Returns p*q and the size (deg+1) of the resulting polyn
+/// Returns p*q as ring elements. p and q MUST be the same length
 fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     assert_eq!(p.len(), q.len());
     let n = p.len();
@@ -147,6 +158,7 @@ fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
         return ret;
     }
 
+    // Split the inputs into low and high halves
     let mid = n / 2;
     let pl = &p[..mid];
     let ph = &p[mid..];
@@ -189,10 +201,12 @@ fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
 /// `bits_per_elem` bits (must be ≤ 16), encoded in the lower bits of the word.
 pub(crate) fn deserialize<const N: usize>(bytes: &[u8], bits_per_elem: usize) -> [u16; N] {
     assert_eq!(bytes.len(), bits_per_elem * N / 8);
+
+    // We only want the lower bits_per_elem bits to be set in any elem of our output
     let bitmask = (1 << bits_per_elem) - 1;
-    let mut p = [0u16; N];
 
     // Accumulate all the bits into p
+    let mut p = [0u16; N];
     let mut bit_idx = 0;
     while bit_idx < bits_per_elem * N {
         let byte_idx = bit_idx / 8;
@@ -200,13 +214,19 @@ pub(crate) fn deserialize<const N: usize>(bytes: &[u8], bits_per_elem: usize) ->
         let bit_in_byte = bit_idx % 8;
         let bit_in_elem = bit_idx % bits_per_elem;
 
-        p[elem_idx] |= ((bytes[byte_idx] as u16) >> bit_in_byte) << bit_in_elem;
-        let just_accumulated = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
-        bit_idx += just_accumulated;
+        // Shift the byte we're reading so the first bit we want is the lowest bit
+        let data_to_read = bytes[byte_idx] as u16 >> bit_in_byte;
+        // OR the byte into our element, shifitng to align with the first unused bit in the elem
+        p[elem_idx] |= data_to_read << bit_in_elem;
 
-        // TODO: See if this bitmask is really necessary. Yes, we'll get noise in the high
-        // bits, but that's fine as long as these ring elements really are mod q
+        // The above might set some high bits we don't want. Clear them now.
         p[elem_idx] &= bitmask;
+
+        // We have read either: 1) however many bits were remaining in the byte we were
+        // reading, or 2) however many unused bits remained in the current element we were
+        // writing to. Whichever is smaller.
+        let just_read = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
+        bit_idx += just_read;
     }
 
     p
@@ -217,6 +237,9 @@ pub(crate) fn deserialize<const N: usize>(bytes: &[u8], bits_per_elem: usize) ->
 pub(crate) fn serialize(data: &[u16], out_buf: &mut [u8], bits_per_elem: usize) {
     assert_eq!(out_buf.len(), bits_per_elem * data.len() / 8);
 
+    // We only want to write the lower bits_per_elem bits of any element
+    let bitmask = (1 << bits_per_elem) - 1;
+
     // Write all the bits into the given bytestring
     let mut bit_idx = 0;
     while bit_idx < bits_per_elem * data.len() {
@@ -225,10 +248,19 @@ pub(crate) fn serialize(data: &[u16], out_buf: &mut [u8], bits_per_elem: usize) 
         let bit_in_byte = bit_idx % 8;
         let bit_in_elem = bit_idx % bits_per_elem;
 
-        let bits_to_write = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
-        let bitmask = ((1u16 << bits_to_write) - 1) as u8;
-        out_buf[byte_idx] |= (((data[elem_idx] >> bit_in_elem) as u8) & bitmask) << bit_in_byte;
-        bit_idx += bits_to_write
+        // First clear the unused bits of the element we're going to write
+        let elem_to_read = data[elem_idx] & bitmask;
+        // Then  shift the element we're writing so the first unwritten bit is the lowest bit
+        let elem_to_read = (elem_to_read >> bit_in_elem) as u8;
+
+        // OR the bits into our byte, shifitng to align with the first unused bit in the byte
+        out_buf[byte_idx] |= elem_to_read << bit_in_byte;
+
+        // We just wrote either: 1) however many bits remained in the byte we were
+        // reading, or 2) however many unused bits remained in the current element we were
+        // writing to. Whichever is smaller.
+        let just_wrote = core::cmp::min(8 - bit_in_byte, bits_per_elem - bit_in_elem);
+        bit_idx += just_wrote
     }
 }
 
