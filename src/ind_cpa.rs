@@ -1,7 +1,7 @@
 use crate::{
     gen::{gen_matrix_from_seed, gen_secret_from_seed},
     matrix_arith::Matrix,
-    ring_arith::{deserialize, serialize, RingElem, MODULUS_P_BITS, MODULUS_Q_BITS, RING_DEG},
+    ring_arith::{deserialize, RingElem, MODULUS_P_BITS, MODULUS_Q_BITS, RING_DEG},
 };
 
 use rand_core::CryptoRngCore;

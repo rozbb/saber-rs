@@ -5,9 +5,6 @@ use rand_core::CryptoRngCore;
 /// The modulus q of our base ring Z/2^13 Z
 pub(crate) const MODULUS_Q: u16 = 1 << 13;
 
-/// The modulus p of some of our public values
-pub(crate) const MODULUS_P: u16 = 1 << 10;
-
 /// The bitlength of the modulus q
 pub(crate) const MODULUS_Q_BITS: usize = 13;
 
@@ -80,13 +77,6 @@ impl RingElem {
         for coeff in self.0.iter_mut() {
             *coeff = coeff.wrapping_add(val);
         }
-    }
-
-    /// Reduces the coefficients of this ring element to their canonical representative modulo
-    /// 2^modbits
-    pub(crate) fn reduce_mod_2pow(&mut self, mod_bits: usize) {
-        let bitmask = (1 << mod_bits) - 1;
-        self.0.iter_mut().for_each(|w| *w &= bitmask);
     }
 }
 
@@ -271,12 +261,6 @@ impl RingElem {
 
     pub fn schoolbook_mul(&self, other: &RingElem) -> RingElem {
         schoolbook_mul_helper(&self.0, &other.0)
-    }
-
-    fn reduce(&mut self) {
-        // We can do w & MODULUS- 1 instead of w % MODULUS because both simply leave the bottom 13
-        // bits
-        self.0.iter_mut().for_each(|w| *w &= MODULUS_Q - 1)
     }
 }
 

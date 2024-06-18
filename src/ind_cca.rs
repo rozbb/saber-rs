@@ -5,10 +5,7 @@ use crate::{
 };
 
 use rand_core::CryptoRngCore;
-use sha3::{
-    digest::{Digest, ExtendableOutput},
-    Sha3_256, Shake128,
-};
+use sha3::{digest::Digest, Sha3_256};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
 pub type IndCcaPublicKey<const L: usize> = IndCpaPublicKey<L>;
@@ -24,11 +21,11 @@ pub struct IndCcaSecretKey<const L: usize> {
 }
 
 impl<const L: usize> IndCcaSecretKey<L> {
-    pub(crate) fn serialized_len() -> usize {
+    pub fn serialized_len() -> usize {
         32 + 32 + IndCpaPublicKey::<L>::serialized_len() + IndCpaSecretKey::<L>::serialized_len()
     }
 
-    pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
+    pub fn to_bytes(&self, out_buf: &mut [u8]) {
         assert_eq!(out_buf.len(), Self::serialized_len());
         let rest = out_buf;
 

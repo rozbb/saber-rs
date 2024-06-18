@@ -66,15 +66,3 @@ pub(crate) fn gen_matrix_from_seed<const L: usize>(seed: &[u8; 32]) -> Matrix<L,
 
     mat
 }
-
-#[test]
-fn test_gen_secret() {
-    use rand::RngCore;
-    let mut rng = rand::thread_rng();
-    const L: usize = 3;
-    const MU: usize = 8;
-    let mut seed = [0u8; 32];
-    //rng.fill_bytes(&mut seed);
-    let out = gen_secret_from_seed::<L, MU>(&seed);
-    println!("secret is {:?}", out);
-}
