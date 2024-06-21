@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+kem = "0.3.0-pre.0"
 rand_core = "0.6.4"
 sha3 = { version = "0.10.8", default-features = false }
 subtle = "2.5.0"

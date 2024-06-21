@@ -1,7 +1,7 @@
 //! This module contains code for running known-answer tests (KATs)
 
 use crate::{
-    kem::{decap, encap, IndCcaSecretKey, KemPublicKey},
+    kem::{decap, encap, KemPublicKey, KemSecretKey},
     pke::ciphertext_len,
 };
 
@@ -118,7 +118,7 @@ fn kat_helper<const L: usize, const MODULUS_BITS_T: usize, const MU: usize>(file
         let mut rng = KatRng::new(&tv.seed);
         let (sk, pk) = crate::kem::gen_keypair::<L, MU>(&mut rng);
 
-        let mut sk_buf = vec![0u8; IndCcaSecretKey::<L>::serialized_len()];
+        let mut sk_buf = vec![0u8; KemSecretKey::<L>::serialized_len()];
         sk.to_bytes(&mut sk_buf);
         assert_eq!(sk_buf, tv.sk, "secret keys do not match");
 

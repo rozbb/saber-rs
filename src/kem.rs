@@ -14,7 +14,7 @@ pub type KemPublicKey<const L: usize> = PkePublicKey<L>;
 pub type SharedSecret = [u8; 32];
 
 /// A secret key for the IND-CCA-secure Saber KEM scheme
-pub struct IndCcaSecretKey<const L: usize> {
+pub struct KemSecretKey<const L: usize> {
     /// Used for deriving pseudorandom shared secrets when decap fails
     z: [u8; 32],
     /// The PKE secret key
@@ -25,7 +25,7 @@ pub struct IndCcaSecretKey<const L: usize> {
     hash_pke_pk: [u8; 32],
 }
 
-impl<const L: usize> IndCcaSecretKey<L> {
+impl<const L: usize> KemSecretKey<L> {
     pub fn serialized_len() -> usize {
         32 + 32 + PkePublicKey::<L>::serialized_len() + PkeSecretKey::<L>::serialized_len()
     }
@@ -55,7 +55,7 @@ impl<const L: usize> IndCcaSecretKey<L> {
 
 pub fn gen_keypair<const L: usize, const MU: usize>(
     rng: &mut impl CryptoRngCore,
-) -> (IndCcaSecretKey<L>, KemPublicKey<L>) {
+) -> (KemSecretKey<L>, KemPublicKey<L>) {
     let (pke_sk, pke_pk) = pke::gen_keypair::<L, MU>(rng);
 
     // Hash the public key
@@ -71,7 +71,7 @@ pub fn gen_keypair<const L: usize, const MU: usize>(
     let mut z = [0u8; 32];
     rng.fill_bytes(&mut z);
 
-    let sk = IndCcaSecretKey {
+    let sk = KemSecretKey {
         z,
         hash_pke_pk: hash_pke_pk.into(),
         pke_pk: pke_pk.clone(),
@@ -140,7 +140,7 @@ pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
 /// Returns the shared secret or a random value if the ciphertext is invalid.
 /// `ciphertext` MUST have length `ciphertext_len::<L>()`.
 pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
-    sk: &IndCcaSecretKey<L>,
+    sk: &KemSecretKey<L>,
     ciphertext: &[u8],
 ) -> SharedSecret {
     assert_eq!(ciphertext.len(), ciphertext_len::<L, MODULUS_T_BITS>());

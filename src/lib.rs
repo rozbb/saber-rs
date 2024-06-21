@@ -4,6 +4,7 @@ extern crate std;
 
 mod consts;
 mod gen;
+mod impls;
 pub mod kem;
 mod matrix_arith;
 mod pke;
@@ -14,4 +15,4 @@ mod util;
 #[cfg(test)]
 mod kat;
 
-pub use pke::{ciphertext_len, max_ciphertext_len};
+pub extern crate kem as kem_traits;
