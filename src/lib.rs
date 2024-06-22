@@ -13,9 +13,5 @@ mod pke;
 mod ring_arith;
 mod util;
 
-// Known-answer tests
-#[cfg(test)]
-mod kat;
-
 pub extern crate kem as kem_traits;
 pub use impls::*;

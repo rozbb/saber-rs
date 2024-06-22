@@ -2,7 +2,7 @@
 
 use std::{string::String, vec::Vec};
 
-use kem_traits::{Decapsulate, Encapsulate};
+use kem::{Decapsulate, Encapsulate};
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -118,7 +118,7 @@ macro_rules! variant_kat {
         /// Opens the given RSP file and tests our impl against the given vectors
         #[test]
         fn $test_name() {
-            use $crate::impls::$variant_name::*;
+            use saber_kem::$variant_name::*;
 
             let kat_json_file = std::fs::File::open($filename).unwrap();
             let test_vectors =
@@ -150,7 +150,7 @@ macro_rules! variant_kat {
 
 variant_kat!(
     kat_lightsaber,
-    "PQCkemKAT_1568.rsp.json",
+    "tests/PQCkemKAT_1568.rsp.json",
     lightsaber,
     LightsaberPublicKey,
     LightsaberSecretKey,
@@ -159,7 +159,7 @@ variant_kat!(
 
 variant_kat!(
     kat_saber,
-    "PQCkemKAT_2304.rsp.json",
+    "tests/PQCkemKAT_2304.rsp.json",
     saber,
     SaberPublicKey,
     SaberSecretKey,
@@ -168,7 +168,7 @@ variant_kat!(
 
 variant_kat!(
     kat_firesaber,
-    "PQCkemKAT_3040.rsp.json",
+    "tests/PQCkemKAT_3040.rsp.json",
     firesaber,
     FiresaberPublicKey,
     FiresaberSecretKey,
