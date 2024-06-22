@@ -141,6 +141,12 @@ fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
         return ret;
     }
 
+    // If you want to follow along, I used page 4 of these lecture notes
+    //     https://cs.dartmouth.edu/~deepc/LecNotes/cs31/lec6.pdf
+    // and the Wikipedia page on Karatsuba multiplication
+    //     https://en.wikipedia.org/wiki/Karatsuba_algorithm
+    // the z_i notation comes from the Wikipedia page
+
     // Split the inputs into low and high halves
     let mid = n / 2;
     let pl = &p[..mid];
@@ -148,6 +154,7 @@ fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     let ql = &q[..mid];
     let qh = &q[mid..];
 
+    // Compute our intermediate products recursively
     let z0 = karatsuba_mul_helper(pl, ql);
     let z2 = karatsuba_mul_helper(ph, qh);
     let z3 = karatsuba_mul_helper(&poly_add(pl, ph).0[..mid], &poly_add(ql, qh).0[..mid]);
@@ -161,6 +168,7 @@ fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     res
 }
 
+/// Does schoolbook multiplication of two ring elements
 fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     let mut result = RingElem::default();
     // Do all the multiplications
@@ -170,6 +178,8 @@ fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
             let prod = p[i].wrapping_mul(q[j]);
             result.0[idx] = result.0[idx].wrapping_add(prod);
         }
+        // Once we're past the ring degree, wrap around and multiply by -1. This is
+        // because the ring is Z[X]/(X^256 + 1), so X^256 = -1
         for j in (RING_DEG - i)..RING_DEG {
             let idx = i + j - RING_DEG;
             let prod = p[i].wrapping_mul(q[j]);
@@ -178,16 +188,6 @@ fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     }
 
     result
-}
-
-impl RingElem {
-    pub fn karatsuba_mul(&self, other: &RingElem) -> RingElem {
-        karatsuba_mul_helper(&self.0, &other.0)
-    }
-
-    pub fn schoolbook_mul(&self, other: &RingElem) -> RingElem {
-        schoolbook_mul_helper(&self.0, &other.0)
-    }
 }
 
 impl<'a> Add for &'a RingElem {
@@ -234,11 +234,12 @@ mod test {
         }
     }
 
+    // Tests equivalence of karatsuba and schoolbook multiplication
     #[test]
     fn karatsuba() {
         let mut rng = thread_rng();
 
-        for _ in 0..2 {
+        for _ in 0..100 {
             let a = RingElem::rand(&mut rng);
             let b = RingElem::rand(&mut rng);
 
@@ -249,6 +250,7 @@ mod test {
         }
     }
 
+    // Tests serialization and deserialization of ring elements
     #[test]
     fn from_bytes() {
         let mut rng = thread_rng();
@@ -381,22 +383,8 @@ mod test {
         poly
     }
 
-    fn reference_impl_from_bytes_mod2(b: &[u8]) -> RingElem {
-        let mut poly = RingElem::default();
-        let data = &mut poly.0;
-
-        let bytes: Vec<u16> = b.iter().map(|&x| x as u16).collect();
-        for j in 0..32 {
-            {
-                for i in 0..8 {
-                    data[j * 8 + i] = (bytes[j] >> i) & 0x01;
-                }
-            }
-        }
-
-        poly
-    }
-
+    /// A nearly verbatim copy of the C reference impl of POL2BS_N where N = 2^13
+    /// https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/pack_unpack.c#L78
     fn reference_impl_to_bytes_mod8192(polyn: &RingElem, bytes: &mut [u8]) {
         let mut offset_byte: usize;
         let mut offset_data: usize;
@@ -428,6 +416,26 @@ mod test {
         }
     }
 
+    /// A nearly verbatim copy of the C reference impl of BS2POL_N where N = 2
+    /// https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/pack_unpack.c#L184
+    fn reference_impl_from_bytes_mod2(b: &[u8]) -> RingElem {
+        let mut poly = RingElem::default();
+        let data = &mut poly.0;
+
+        let bytes: Vec<u16> = b.iter().map(|&x| x as u16).collect();
+        for j in 0..32 {
+            {
+                for i in 0..8 {
+                    data[j * 8 + i] = (bytes[j] >> i) & 0x01;
+                }
+            }
+        }
+
+        poly
+    }
+
+    /// A nearly verbatim copy of the C reference impl of POL2BS_N where N = 2
+    /// https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/pack_unpack.c#L196
     fn reference_impl_to_bytes_mod2(polyn: &RingElem, bytes: &mut [u8]) {
         let data = polyn.0;
 
