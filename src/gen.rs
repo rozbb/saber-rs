@@ -1,3 +1,5 @@
+//! This file implements methods for generating uniform matrices and binomially distributed vectors
+
 use crate::{
     consts::{MAX_MU, MODULUS_Q_BITS, RING_DEG},
     matrix_arith::Matrix,

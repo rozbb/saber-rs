@@ -1,3 +1,5 @@
+//! This file implements the IND-CCA-secure Saber.KEM scheme
+
 use crate::pke::{
     self, ciphertext_len, max_ciphertext_len, max_pke_pubkey_serialized_len, PkePublicKey,
     PkeSecretKey,

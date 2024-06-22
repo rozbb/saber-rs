@@ -1,3 +1,5 @@
+//! This file defines and implements matrices over our ring
+
 use crate::{consts::RING_DEG, ring_arith::RingElem};
 
 /// An element of R^{x×y} where R is a [`RingElem`], stored in row-major order

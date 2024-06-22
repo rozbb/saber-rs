@@ -1,3 +1,5 @@
+//! This file implements serialization and deserialization routines for ring elements
+
 // Algorithm 9, BS2POLN
 /// Deserializes the given bitstring into a u16 array. Every element of the array has
 /// `bits_per_elem` bits (must be ≤ 16), encoded in the lower bits of the word.

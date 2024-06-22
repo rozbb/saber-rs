@@ -1,3 +1,5 @@
+//! This file implements the IND-CPA-secure Saber.PKE scheme
+
 use crate::{
     consts::MAX_L,
     consts::MAX_MODULUS_T_BITS,

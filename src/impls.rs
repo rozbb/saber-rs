@@ -1,4 +1,4 @@
-//! Contains external-facing impls of KEM traits
+//! This file implements the external-facing API of our KEM
 
 use crate::{
     consts::*,

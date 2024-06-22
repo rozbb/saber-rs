@@ -1,3 +1,6 @@
+//! This file defines and implements Saber ring elements, specifically ℤ[X]/(X^256 + 1) mod n where
+//! n can be any power of two at most 2^16
+
 use crate::{
     consts::RING_DEG,
     util::{deserialize, serialize},
