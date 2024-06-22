@@ -13,7 +13,7 @@ impl KatRng {
     fn new(seed: &[u8]) -> Self {
         assert_eq!(seed.len(), 48);
         let mut rng = aes_ctr_drbg::DrbgCtx::new();
-        rng.init(&seed, Vec::new());
+        rng.init(seed, Vec::new());
         KatRng(rng)
     }
 }

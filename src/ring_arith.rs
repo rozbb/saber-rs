@@ -172,9 +172,8 @@ fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     // Compute z0 + z1*X^mid + z2*X^(2mid)
     let z1 = mul_by_xpow(&z1, mid);
     let z2 = mul_by_xpow(&z2, 2 * mid);
-    let res = poly_add(&poly_add(&z0.0, &z1.0).0, &z2.0);
 
-    res
+    poly_add(&poly_add(&z0.0, &z1.0).0, &z2.0)
 }
 
 /// Does schoolbook multiplication of two ring elements
@@ -342,8 +341,8 @@ mod test {
         for j in 0..RING_DEG / 8 {
             offset_byte = 13 * j;
             offset_data = 8 * j;
-            data[offset_data + 0] =
-                (bytes[offset_byte + 0] & (0xff)) | ((bytes[offset_byte + 1] & 0x1f) << 8);
+            data[offset_data] =
+                (bytes[offset_byte] & (0xff)) | ((bytes[offset_byte + 1] & 0x1f) << 8);
             data[offset_data + 1] = (bytes[offset_byte + 1] >> 5 & (0x07))
                 | ((bytes[offset_byte + 2] & 0xff) << 3)
                 | ((bytes[offset_byte + 3] & 0x03) << 11);
@@ -379,8 +378,8 @@ mod test {
         for j in 0..RING_DEG / 4 {
             offset_byte = 5 * j;
             offset_data = 4 * j;
-            data[offset_data + 0] =
-                (bytes[offset_byte + 0] & (0xff)) | ((bytes[offset_byte + 1] & 0x03) << 8);
+            data[offset_data] =
+                (bytes[offset_byte] & (0xff)) | ((bytes[offset_byte + 1] & 0x03) << 8);
             data[offset_data + 1] =
                 ((bytes[offset_byte + 1] >> 2) & (0x3f)) | ((bytes[offset_byte + 2] & 0x0f) << 6);
             data[offset_data + 2] =
@@ -402,8 +401,8 @@ mod test {
         for j in 0..RING_DEG / 8 {
             offset_byte = 13 * j;
             offset_data = 8 * j;
-            bytes[offset_byte + 0] = (data[offset_data + 0] & (0xff)) as u8;
-            bytes[offset_byte + 1] = ((data[offset_data + 0] >> 8) & 0x1f) as u8
+            bytes[offset_byte] = (data[offset_data] & (0xff)) as u8;
+            bytes[offset_byte + 1] = ((data[offset_data] >> 8) & 0x1f) as u8
                 | ((data[offset_data + 1] & 0x07) << 5) as u8;
             bytes[offset_byte + 2] = ((data[offset_data + 1] >> 3) & 0xff) as u8;
             bytes[offset_byte + 3] = ((data[offset_data + 1] >> 11) & 0x03) as u8
@@ -450,7 +449,7 @@ mod test {
 
         for j in 0..32 {
             for i in 0..8 {
-                bytes[j] = bytes[j] | ((data[j * 8 + i] & 0x01) << i) as u8;
+                bytes[j] |= ((data[j * 8 + i] & 0x01) << i) as u8;
             }
         }
     }

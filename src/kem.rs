@@ -45,13 +45,12 @@ impl<const L: usize> KemSecretKey<L> {
         let mut z = [0u8; 32];
         rng.fill_bytes(&mut z);
 
-        let sk = KemSecretKey {
+        KemSecretKey {
             z,
             hash_pke_pk: hash_pke_pk.into(),
             pke_pk,
             pke_sk,
-        };
-        sk
+        }
     }
 
     /// Serialize this secret key into `out_buf`. `out_buf` MUST have length `Self::SERIALIZED_LEN`
@@ -157,12 +156,12 @@ pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     // shared secret = SHA3-256(k || r')
     // The spec has the hash input order switched, but we're following the reference impl
     // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L46
-    let shared_secret = Sha3_256::new()
+
+    Sha3_256::new()
         .chain_update(k)
         .chain_update(rprime)
         .finalize()
-        .into();
-    shared_secret
+        .into()
 }
 
 /// Decapsulates a shared secret from the given ciphertext and secret key.
@@ -210,12 +209,12 @@ pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     // session key = SHA3-256(k || r')
     // The spec has the hash input order switched, but we're following the reference impl
     // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L46
-    let shared_secret = Sha3_256::new()
+
+    Sha3_256::new()
         .chain_update(k)
         .chain_update(rprime)
         .finalize()
-        .into();
-    shared_secret
+        .into()
 }
 
 #[cfg(test)]

@@ -95,7 +95,7 @@ pub(crate) fn gen_keypair<const L: usize, const MU: usize>(
     rng.fill_bytes(&mut secret_seed);
 
     // Before using the matrix seed, we need to hash it
-    Shake128::digest_xof(&matrix_seed_unhashed, &mut matrix_seed);
+    Shake128::digest_xof(matrix_seed_unhashed, &mut matrix_seed);
 
     let mat_a = gen_matrix_from_seed::<L>(&matrix_seed);
     let vec_s = gen_secret_from_seed::<L, MU>(&secret_seed);
