@@ -3,7 +3,7 @@
 
 use crate::{
     consts::RING_DEG,
-    util::{deserialize, serialize},
+    ser::{deserialize, serialize},
 };
 
 use core::ops::{Add, Mul, Sub};

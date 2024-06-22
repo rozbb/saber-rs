@@ -4,7 +4,7 @@ use crate::{
     consts::{MAX_MU, MODULUS_Q_BITS, RING_DEG},
     matrix_arith::Matrix,
     ring_arith::RingElem,
-    util::deserialize,
+    ser::deserialize,
 };
 
 use sha3::{
