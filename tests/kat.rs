@@ -71,8 +71,8 @@ impl CryptoRng for KatRng {}
 fn drbg() {
     // We have a known vector for seed = [1, 2, 3, ...]
     let mut seed = [0u8; 48];
-    for i in 0..48 {
-        seed[i] = i as u8;
+    for (i, elem) in seed.iter_mut().enumerate() {
+        *elem = i as u8;
     }
 
     let mut rng = KatRng::new(&seed[..]);

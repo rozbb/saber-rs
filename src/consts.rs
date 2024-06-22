@@ -1,8 +1,6 @@
-/// The modulus q of our base ring Z/2^13 Z
-pub(crate) const MODULUS_Q: u16 = 1 << 13;
-/// The bitlength of the modulus q
+/// The bitlength of the modulus q = 2^13
 pub(crate) const MODULUS_Q_BITS: usize = 13;
-/// The bitlength of the modulus p
+/// The bitlength of the modulus p = 2^10
 pub(crate) const MODULUS_P_BITS: usize = 10;
 /// The degree of the polynomial ring over Z/qZ
 pub(crate) const RING_DEG: usize = 256;
@@ -31,7 +29,9 @@ pub(crate) const FIRESABER_MU: usize = 6;
 
 /// The maximum possible μ value is μ=10, set by Lightsaber
 pub(crate) const MAX_MU: usize = 10;
+
 /// The maximum possible l value is l=4, set by FireSaber
 pub(crate) const MAX_L: usize = 4;
-// The maximum possible log(T) value is T=6, set by Firesaber
+
+/// The maximum possible log(T) value is T=6, set by Firesaber
 pub(crate) const MAX_MODULUS_T_BITS: usize = 6;

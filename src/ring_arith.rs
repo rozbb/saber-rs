@@ -1,11 +1,9 @@
 use crate::{
-    consts::{MODULUS_Q, RING_DEG},
+    consts::RING_DEG,
     util::{deserialize, serialize},
 };
 
 use core::ops::{Add, Mul, Sub};
-
-use rand_core::CryptoRngCore;
 
 // The degree (-1) of a polynomial at which point we revert to schoolbook multiplication.
 // On my computer, 128 is the optimal choice. This is kinda odd because it means we only do
@@ -25,12 +23,16 @@ impl Default for RingElem {
 
 impl RingElem {
     /// Creates a random ring element
-    pub fn rand(rng: &mut impl CryptoRngCore) -> Self {
+    #[cfg(test)]
+    pub(crate) fn rand(rng: &mut impl rand_core::CryptoRngCore) -> Self {
+        let modulus = 1 << crate::consts::MODULUS_Q_BITS as u32;
+
         let mut result = [0; RING_DEG];
-        for i in 0..RING_DEG {
-            let coeff = rng.next_u32() % MODULUS_Q as u32;
-            result[i] = coeff as u16;
-        }
+        result.iter_mut().for_each(|coeff| {
+            let w = rng.next_u32() % modulus;
+            *coeff = w as u16;
+        });
+
         RingElem(result)
     }
 
@@ -140,10 +142,10 @@ fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     // Eventually, we have few enough terms that we should just do schoolbook multiplication
     if n == KARATSUBA_THRESHOLD {
         let mut ret = RingElem::default();
-        // n is small enough that there is no wrapping around the ring degree (256)
-        for i in 0..n {
-            for j in 0..n {
-                let prod = p[i].wrapping_mul(q[j]);
+        // p and q are low-deg enough that there is no wrapping around the ring degree (256)
+        for (i, p_coeff) in p.iter().enumerate() {
+            for (j, q_coeff) in q.iter().enumerate() {
+                let prod = p_coeff.wrapping_mul(*q_coeff);
                 ret.0[i + j] = ret.0[i + j].wrapping_add(prod);
             }
         }
@@ -180,17 +182,22 @@ fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
 fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     let mut result = RingElem::default();
     // Do all the multiplications
-    for i in 0..RING_DEG {
-        for j in 0..(RING_DEG - i) {
+    for (i, p_coeff) in p.iter().enumerate() {
+        let mut q_iter = q.iter().enumerate();
+
+        // Do multiplications up until i+j == RING_DEG
+        for _ in 0..(RING_DEG - i) {
+            let (j, q_coeff) = q_iter.next().unwrap();
             let idx = i + j;
-            let prod = p[i].wrapping_mul(q[j]);
+            let prod = p_coeff.wrapping_mul(*q_coeff);
             result.0[idx] = result.0[idx].wrapping_add(prod);
         }
+
         // Once we're past the ring degree, wrap around and multiply by -1. This is
         // because the ring is Z[X]/(X^256 + 1), so X^256 = -1
-        for j in (RING_DEG - i)..RING_DEG {
+        for (j, q_coeff) in q_iter {
             let idx = i + j - RING_DEG;
-            let prod = p[i].wrapping_mul(q[j]);
+            let prod = p[i].wrapping_mul(*q_coeff);
             result.0[idx] = result.0[idx].wrapping_sub(prod);
         }
     }
