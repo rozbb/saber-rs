@@ -1,5 +1,3 @@
-use std::os;
-
 /// The modulus q of our base ring Z/2^13 Z
 pub(crate) const MODULUS_Q: u16 = 1 << 13;
 /// The bitlength of the modulus q

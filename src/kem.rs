@@ -27,7 +27,7 @@ pub struct KemSecretKey<const L: usize> {
 
 impl<const L: usize> KemSecretKey<L> {
     pub const SERIALIZED_LEN: usize =
-        32 + 32 + PkePublicKey::<L>::SERIALIZED_LEN + PkeSecretKey::<L>::SERIALIZED_LEN;
+        PkeSecretKey::<L>::SERIALIZED_LEN + PkePublicKey::<L>::SERIALIZED_LEN + 32 + 32;
 
     pub fn generate<const MU: usize>(rng: &mut impl CryptoRngCore) -> KemSecretKey<L> {
         let (pke_sk, pke_pk) = pke::gen_keypair::<L, MU>(rng);
@@ -80,6 +80,8 @@ impl<const L: usize> KemSecretKey<L> {
     pub fn from_bytes(bytes: &[u8]) -> Self {
         assert_eq!(bytes.len(), Self::SERIALIZED_LEN);
 
+        // Serialization order is sk, pk, hash_pk, z
+
         let (bytes, rest) = bytes.split_at(PkeSecretKey::<L>::SERIALIZED_LEN);
         let pke_sk = PkeSecretKey::from_bytes(bytes);
 
@@ -91,6 +93,8 @@ impl<const L: usize> KemSecretKey<L> {
 
         let (z, rest) = rest.split_at(32);
         let z = z.try_into().unwrap();
+
+        assert_eq!(rest.len(), 0);
 
         Self {
             z,
@@ -150,15 +154,15 @@ pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     // r' = SHA3-256(ct)
     let rprime = Sha3_256::digest(out_buf);
 
-    // session key = SHA3-256(k || r')
+    // shared secret = SHA3-256(k || r')
     // The spec has the hash input order switched, but we're following the reference impl
     // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L46
-    let sess_key = Sha3_256::new()
+    let shared_secret = Sha3_256::new()
         .chain_update(k)
         .chain_update(rprime)
         .finalize()
         .into();
-    sess_key
+    shared_secret
 }
 
 /// Decapsulates a shared secret from the given ciphertext and secret key.
@@ -206,12 +210,12 @@ pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     // session key = SHA3-256(k || r')
     // The spec has the hash input order switched, but we're following the reference impl
     // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L46
-    let sess_key = Sha3_256::new()
+    let shared_secret = Sha3_256::new()
         .chain_update(k)
         .chain_update(rprime)
         .finalize()
         .into();
-    sess_key
+    shared_secret
 }
 
 #[cfg(test)]

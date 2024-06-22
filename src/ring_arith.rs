@@ -212,6 +212,7 @@ mod test {
     use crate::consts::RING_DEG;
 
     use rand::{thread_rng, Rng, RngCore};
+    use std::vec::Vec;
 
     // Checks that a * b == b * a and a + b == b + a for ring elements a, b
     #[test]

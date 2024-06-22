@@ -6,50 +6,77 @@ use crate::{
     pke::ciphertext_len,
 };
 
+use core::convert::Infallible;
+
 use kem_traits::{Decapsulate, Encapsulate};
 use rand_core::CryptoRngCore;
 
-/// The shared secret of a KEM execution
+/// A shared secret of a KEM execution
 pub type SharedSecret = [u8; 32];
 
-/// The private key for the Saber KEM
-pub struct SaberPrivkey(KemSecretKey<SABER_L>);
+/// A secret key for the Saber KEM
+pub struct SaberSecretKey(KemSecretKey<SABER_L>);
 
-/// The public key for the Saber KEM
-pub struct SaberPubkey(KemPublicKey<SABER_L>);
+/// A public key for the Saber KEM
+pub struct SaberPublicKey(KemPublicKey<SABER_L>);
 
-/// The ciphertext, or "encapsulated key"", for the Saber KEM
+/// A ciphertext, or "encapsulated key"", for the Saber KEM. This is a thin wrapper around
+/// a fixed-size byte array.
 #[derive(Clone)]
 pub struct SaberCiphertext([u8; ciphertext_len::<SABER_L, SABER_MODULUS_T_BITS>()]);
 
-impl SaberPrivkey {
+impl SaberCiphertext {
+    /// The length of the ciphertext, which is a byte array
+    pub const LEN: usize = ciphertext_len::<SABER_L, SABER_MODULUS_T_BITS>();
+}
+
+impl SaberSecretKey {
+    /// The length of the secret key when serialized to bytes
     pub const SERIALIZED_LEN: usize = KemSecretKey::<SABER_L>::SERIALIZED_LEN;
 
-    /// Generate a fresh private key
+    /// Generate a fresh secret key
     pub fn generate(rng: &mut impl CryptoRngCore) -> Self {
         Self(KemSecretKey::generate::<SABER_MU>(rng))
     }
 
+    /// Serialize this secret key into `out_buf`. `out_buf` MUST have length `Self::SERIALIZED_LEN`.
+    ///
+    /// # Panics
+    /// Panics if `out_buf.len() != Self::SERIALIZED_LEN`.
     pub fn to_bytes(&self, out_buf: &mut [u8]) {
         self.0.to_bytes(out_buf);
     }
 
+    /// Deserializes a secret key from `bytes`. `bytes` MUST have length `Self::SERIALIZED_LEN`.
+    ///
+    /// # Panics
+    /// Panics if `bytes.len() != Self::SERIALIZED_LEN`.
     pub fn from_bytes(bytes: &[u8]) -> Self {
         Self(KemSecretKey::from_bytes(bytes))
     }
 
-    pub fn public_key(&self) -> SaberPubkey {
-        SaberPubkey(self.0.public_key().clone())
+    /// Returns the public key corresponding to this secret key
+    pub fn public_key(&self) -> SaberPublicKey {
+        SaberPublicKey(self.0.public_key().clone())
     }
 }
 
-impl SaberPubkey {
+impl SaberPublicKey {
+    /// The length of the public key when serialized to bytes
     pub const SERIALIZED_LEN: usize = KemPublicKey::<SABER_L>::SERIALIZED_LEN;
 
+    /// Serialize this public key into `out_buf`. `out_buf` MUST have length `Self::SERIALIZED_LEN`.
+    ///
+    /// # Panics
+    /// Panics if `out_buf.len() != Self::SERIALIZED_LEN`.
     pub fn to_bytes(&self, out_buf: &mut [u8]) {
         self.0.to_bytes(out_buf);
     }
 
+    /// Deserializes a public key from `bytes`. `bytes` MUST have length `Self::SERIALIZED_LEN`.
+    ///
+    /// # Panics
+    /// Panics if `bytes.len() != Self::SERIALIZED_LEN`.
     pub fn from_bytes(bytes: &[u8]) -> Self {
         Self(KemPublicKey::from_bytes(bytes))
     }
@@ -73,8 +100,9 @@ impl AsMut<[u8]> for SaberCiphertext {
     }
 }
 
-impl Encapsulate<SaberCiphertext, SharedSecret> for SaberPubkey {
-    type Error = ();
+impl Encapsulate<SaberCiphertext, SharedSecret> for SaberPublicKey {
+    /// Encapsulation cannot fail
+    type Error = Infallible;
 
     fn encapsulate(
         &self,
@@ -90,10 +118,13 @@ impl Encapsulate<SaberCiphertext, SharedSecret> for SaberPubkey {
         Ok((ciphertext, shared_secret))
     }
 }
-impl Decapsulate<SaberCiphertext, SharedSecret> for SaberPrivkey {
-    type Error = ();
+impl Decapsulate<SaberCiphertext, SharedSecret> for SaberSecretKey {
+    /// Decapsulation cannot fail
+    type Error = Infallible;
 
-    fn decapsulate(&self, encapsulated_key: &SaberCiphertext) -> Result<SharedSecret, ()> {
+    /// Decapsulates an encapsulated key and returns the resulting shared secret.
+    /// If the encapsulated key is invalid, then the shared secret will be psuedorandom garbage.
+    fn decapsulate(&self, encapsulated_key: &SaberCiphertext) -> Result<SharedSecret, Self::Error> {
         Ok(
             crate::kem::decap::<SABER_L, SABER_MU, SABER_MODULUS_T_BITS>(
                 &self.0,
@@ -106,17 +137,17 @@ impl Decapsulate<SaberCiphertext, SharedSecret> for SaberPrivkey {
 #[test]
 fn test_api() {
     let mut rng = rand::thread_rng();
-    let sk = SaberPrivkey::generate(&mut rng);
+    let sk = SaberSecretKey::generate(&mut rng);
     let pk = sk.public_key();
 
     // Serialize and deserialize the keys
-    let mut sk_bytes = [0u8; SaberPrivkey::SERIALIZED_LEN];
+    let mut sk_bytes = [0u8; SaberSecretKey::SERIALIZED_LEN];
     sk.to_bytes(&mut sk_bytes);
-    let sk = SaberPrivkey::from_bytes(&sk_bytes);
+    let sk = SaberSecretKey::from_bytes(&sk_bytes);
 
-    let mut pk_bytes = [0u8; SaberPubkey::SERIALIZED_LEN];
+    let mut pk_bytes = [0u8; SaberPublicKey::SERIALIZED_LEN];
     pk.to_bytes(&mut pk_bytes);
-    let pk = SaberPubkey::from_bytes(&pk_bytes);
+    let pk = SaberPublicKey::from_bytes(&pk_bytes);
 
     let (ct, ss1) = pk.encapsulate(&mut rng).unwrap();
     let ct_bytes = ct.as_ref();
