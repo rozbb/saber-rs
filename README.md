@@ -15,12 +15,12 @@ This crate has not been audited in any sense of the word. Use at your own risk.
 Compatibility
 -------------
 
-This crate is compatible with Saber's [C reference implementation](https://github.com/KULeuven-COSIC/SABER/tree/f7f39e4db2f3e22a21e1dd635e0601caae2b4510). Known-answer tests (KATs) test vectors can be found in [`tests/`]. Test vectors were taken directly from the previously linked repo, and converted to JSON using [`tests/convert_rsp_to_json.py`].
+This crate is compatible with Saber's [C reference implementation](https://github.com/KULeuven-COSIC/SABER/tree/f7f39e4db2f3e22a21e1dd635e0601caae2b4510). Known-answer tests (KATs) test vectors can be found in [`tests/`]. Test vectors were taken directly from the previously linked repo, and converted to JSON using [`tests/convert_rsp_to_json.py`](tests/convert_rsp_to_json.py).
 
 Example code
 ------------
 
-The following code can be found in [`examples/simple.rs`].
+The following code can be found in [`examples/simple.rs`](examples/simple.rs).
 
 ```rust
 use saber_kem::{
