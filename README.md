@@ -12,6 +12,14 @@ Warning
 
 This crate has not been audited in any sense of the word. Use at your own risk.
 
+Why Saber?
+----------
+
+In general, if you are looking to use a post-quantum KEM and have no other requirements, you should use ML-KEM (aka "Kyber", its pre-standardization name), since it is faster and more standardized than Saber. However, Saber has two small benefits over Kyber:
+
+* All Saber public keys and ciphertexts pack perfectly into bytes. So if you need to perform a keyed permutation on a KEM's public keys, as is required in some ideal-cipher-based constructions such as [CAKE](https://eprint.iacr.org/2023/470), you can simply use a wide-block cipher over a serialized Saber public key. In comparison Kyber requires you to define a permutation over arrays of mod-q values (note: Kyber public keys actually can be compressed to pack into bytes, but nobody has proven it secure; Theorem 2 of the [original paper](https://eprint.iacr.org/2017/634) only considers the uncompressed scheme).
+* Relatedly, all Saber arithmetic is modulo a power of two, which is extremely simple for CPUs to work with. Arithmetic modulo a prime can yield much faster computations, but it can also cause accidental timing leaks due to compilers being too smart. Such vulnerabilities have affected [Kyber](https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/hqbtIGFKIpU/m/cnE3pbueBgAJ) and [curve25519](https://rustsec.org/advisories/RUSTSEC-2024-0344.html). I don't claim any of these other projects are insecure, just that this is a specific issue they must contend with going forward, that Saber does not have to.
+
 Compatibility
 -------------
 
