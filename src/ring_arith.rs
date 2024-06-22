@@ -5,8 +5,8 @@ use crate::{
 
 use core::ops::{Add, Mul, Sub};
 
-// The degree (-1) of a polynomial at which point we revert to schoolbook multiplication.
-// On my computer, 128 is the optimal choice. This is kinda odd because it means we only do
+// The degree (-1) of a polynomial at which point we revert to schoolbook multiplication. On my
+// computer, 128 is the optimal choice. This is kinda odd because it means we only do
 // 1 round of Karatsbua mult.
 const KARATSUBA_THRESHOLD: usize = 128;
 
@@ -44,8 +44,8 @@ impl RingElem {
         RingElem(arr)
     }
 
-    /// Serializes this ring element, treating each coefficient as having only `bits_per_elem` bits.
-    /// In Saber terms, this runs POLYk2BS where k = bits_per_elem
+    /// Serializes this ring element, treating each coefficient as having only `bits_per_elem`
+    /// bits. In Saber terms, this runs POLYk2BS where k = bits_per_elem
     pub(crate) fn to_bytes(self, out_buf: &mut [u8], bits_per_elem: usize) {
         assert_eq!(out_buf.len(), bits_per_elem * RING_DEG / 8);
         serialize(&self.0, out_buf, bits_per_elem)

@@ -1,7 +1,8 @@
 use crate::{consts::RING_DEG, ring_arith::RingElem};
 
 /// An element of R^{x×y} where R is a [`RingElem`], stored in row-major order
-// We store the matrix in row-major order, so the outer array is the number of rows, i.e., the height, i.e., X
+// We store the matrix in row-major order, so the outer array is the number of rows, i.e., the
+// height, i.e., X
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub(crate) struct Matrix<const X: usize, const Y: usize>(pub(crate) [[RingElem; Y]; X]);
 
@@ -32,6 +33,7 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
         }
     }
 
+    /// Returns the matrix transpose
     pub(crate) fn transpose(&self) -> Matrix<Y, X> {
         let mut ret = Matrix::default();
         for i in 0..X {
@@ -81,9 +83,10 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
         }
     }
 
-    /// Serializes this matrix, ring element by ring element, treating each
-    /// ring element coefficient as having only `bits_per_elem` bits.
-    /// In Saber terms, this runs POLYVECk2BS where k = bits_per_elem
+    // Algorithm 12, POLVECN2BS
+    /// Serializes this matrix, ring element by ring element, treating each ring element
+    /// coefficient as having only `bits_per_elem` bits. In Saber terms, this runs POLYVECk2BS
+    /// where k = bits_per_elem
     pub(crate) fn to_bytes(&self, out_buf: &mut [u8], bits_per_elem: usize) {
         assert_eq!(out_buf.len(), X * Y * bits_per_elem * RING_DEG / 8);
 
@@ -96,9 +99,10 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
         }
     }
 
-    /// Deserializes a matrix, ring element by ring element, treating each
-    /// ring element coefficient as having only `bits_per_elem` bits.
-    /// In Saber terms, this runs BS2POLYVECk where k = bits_per_elem
+    // Algorithm 11, BS2POLVECN
+    /// Deserializes a matrix, ring element by ring element, treating each ring element coefficient
+    /// as having only `bits_per_elem` bits. In Saber terms, this runs BS2POLYVECk where k =
+    /// bits_per_elem
     pub(crate) fn from_bytes(bytes: &[u8], bits_per_elem: usize) -> Self {
         assert_eq!(bytes.len(), X * Y * bits_per_elem * RING_DEG / 8);
         let mut result = Matrix::default();

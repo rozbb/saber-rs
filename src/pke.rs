@@ -40,11 +40,13 @@ impl<const L: usize> PkeSecretKey<L> {
 impl<const L: usize> PkePublicKey<L> {
     pub const SERIALIZED_LEN: usize = 32 + L * MODULUS_P_BITS * RING_DEG / 8;
 
+    /// Serializes this public key to a byte string. `out_buf` MUST have length SERIALIZED_LEN
     pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
         let out_size = Self::SERIALIZED_LEN;
         assert_eq!(out_buf.len(), out_size);
 
-        // We write out the LWR sample and then the seed. The spec actually said to do the opposite, but the reference impl does it this way
+        // We write out the LWR sample and then the seed. The spec actually said to do the
+        // opposite, but the reference impl does it this way
         // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/SABER_indcpa.c#L42
 
         // Write out the LWR sample
@@ -71,13 +73,15 @@ pub(crate) const fn max_pke_pubkey_serialized_len() -> usize {
     32 + MAX_L * MODULUS_P_BITS * RING_DEG / 8
 }
 
-/// The maximum length of a ciphertext (PKE or KEM, since they're the same), for all parameter choices
+/// The maximum length of a ciphertext (PKE or KEM, since they're the same), for all parameter
+/// choices, for a message that is 32-bytes.
 pub const fn max_ciphertext_len() -> usize {
     // b' is in R^l_P and c is in R_T
     MAX_MODULUS_T_BITS * RING_DEG / 8 + MAX_L * MODULUS_P_BITS * RING_DEG / 8
 }
 
-/// The length of a ciphertext (PKE or KEM, since they're the same) for a given parameter choice
+/// The length of a ciphertext (PKE or KEM, since they're the same) for a given parameter choice,
+/// for a message that is 32-bytes.
 pub const fn ciphertext_len<const L: usize, const MODULUS_T_BITS: usize>() -> usize {
     // b' is in R^l_P and c is in R_T
     L * MODULUS_P_BITS * RING_DEG / 8 + MODULUS_T_BITS * RING_DEG / 8
@@ -115,6 +119,10 @@ pub(crate) fn gen_keypair<const L: usize, const MU: usize>(
     )
 }
 
+// Algorithm 19, Saber.PKE.Dec
+/// Decrypts a ciphertext using the given secret key. `ciphertext` MUST have length
+/// ``ciphertext_len::<L, MODULUS_T_BITs>` corresponding to the length of a ciphertext that
+/// encrypts a 32-byte message.
 pub(crate) fn decrypt<const L: usize, const MODULUS_T_BITS: usize>(
     sk: &PkeSecretKey<L>,
     ciphertext: &[u8],
@@ -143,6 +151,7 @@ pub(crate) fn decrypt<const L: usize, const MODULUS_T_BITS: usize>(
     m
 }
 
+// Algorithm 18, Saber.PKE.Enc
 /// Encrypts a message with a given public key and randomness (`coins`).
 /// `out_buf` MUST have length `ciphertext_len::<L>()`.
 pub(crate) fn encrypt_deterministic<

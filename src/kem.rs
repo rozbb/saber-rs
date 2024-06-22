@@ -29,6 +29,8 @@ impl<const L: usize> KemSecretKey<L> {
     pub const SERIALIZED_LEN: usize =
         PkeSecretKey::<L>::SERIALIZED_LEN + PkePublicKey::<L>::SERIALIZED_LEN + 32 + 32;
 
+    // Algorithm 20, Saber.KEM.KeyGen
+    /// Generate a fresh secret key
     pub fn generate<const MU: usize>(rng: &mut impl CryptoRngCore) -> KemSecretKey<L> {
         let (pke_sk, pke_pk) = pke::gen_keypair::<L, MU>(rng);
 
@@ -76,6 +78,8 @@ impl<const L: usize> KemSecretKey<L> {
         assert_eq!(rest.len(), 0);
     }
 
+    /// Deserializes a `KemSecretKey` from the given byte string. `bytes` MUST have length
+    /// `Self::SERIALIZED_LEN`.
     pub fn from_bytes(bytes: &[u8]) -> Self {
         assert_eq!(bytes.len(), Self::SERIALIZED_LEN);
 
@@ -108,6 +112,7 @@ impl<const L: usize> KemSecretKey<L> {
     }
 }
 
+// Algorithm 21, Saber.KEM.Encaps
 /// Encapsulate a shared secret to the given public key. Returns the shared secret.
 /// `out_buf` MUST have length `ciphertext_len::<L>()`.
 pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
@@ -164,6 +169,7 @@ pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
         .into()
 }
 
+// Algorithm 22, Saber.KEM.Decaps
 /// Decapsulates a shared secret from the given ciphertext and secret key.
 /// Returns the shared secret or a random value if the ciphertext is invalid.
 /// `ciphertext` MUST have length `ciphertext_len::<L>()`.
