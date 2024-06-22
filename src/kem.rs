@@ -26,21 +26,46 @@ pub struct KemSecretKey<const L: usize> {
 }
 
 impl<const L: usize> KemSecretKey<L> {
-    pub fn serialized_len() -> usize {
-        32 + 32 + PkePublicKey::<L>::serialized_len() + PkeSecretKey::<L>::serialized_len()
+    pub const SERIALIZED_LEN: usize =
+        32 + 32 + PkePublicKey::<L>::SERIALIZED_LEN + PkeSecretKey::<L>::SERIALIZED_LEN;
+
+    pub fn generate<const MU: usize>(rng: &mut impl CryptoRngCore) -> KemSecretKey<L> {
+        let (pke_sk, pke_pk) = pke::gen_keypair::<L, MU>(rng);
+
+        // Hash the public key
+        let hash_pke_pk = {
+            // Serialize the pubkey into a buffer of the appropriate size
+            let mut buf = [0u8; max_pke_pubkey_serialized_len()];
+            let pk_bytes = &mut buf[..PkePublicKey::<L>::SERIALIZED_LEN];
+            pke_pk.to_bytes(pk_bytes);
+            Sha3_256::digest(pk_bytes)
+        };
+
+        // Sample some random bytes for z
+        let mut z = [0u8; 32];
+        rng.fill_bytes(&mut z);
+
+        let sk = KemSecretKey {
+            z,
+            hash_pke_pk: hash_pke_pk.into(),
+            pke_pk,
+            pke_sk,
+        };
+        sk
     }
 
+    /// Serialize this secret key into `out_buf`. `out_buf` MUST have length `Self::SERIALIZED_LEN`
     pub fn to_bytes(&self, out_buf: &mut [u8]) {
-        assert_eq!(out_buf.len(), Self::serialized_len());
+        assert_eq!(out_buf.len(), Self::SERIALIZED_LEN);
         let rest = out_buf;
 
         // Serialization order, according to reference impl, is sk, pk, hash_pk, z
         // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L12-L25
 
-        let (out_cpa_sk, rest) = rest.split_at_mut(PkeSecretKey::<L>::serialized_len());
+        let (out_cpa_sk, rest) = rest.split_at_mut(PkeSecretKey::<L>::SERIALIZED_LEN);
         self.pke_sk.to_bytes(out_cpa_sk);
 
-        let (out_cpa_pk, rest) = rest.split_at_mut(PkePublicKey::<L>::serialized_len());
+        let (out_cpa_pk, rest) = rest.split_at_mut(PkePublicKey::<L>::SERIALIZED_LEN);
         self.pke_pk.to_bytes(out_cpa_pk);
 
         let (out_hash_pk, rest) = rest.split_at_mut(32);
@@ -51,33 +76,33 @@ impl<const L: usize> KemSecretKey<L> {
 
         assert_eq!(rest.len(), 0);
     }
-}
 
-pub fn gen_keypair<const L: usize, const MU: usize>(
-    rng: &mut impl CryptoRngCore,
-) -> (KemSecretKey<L>, KemPublicKey<L>) {
-    let (pke_sk, pke_pk) = pke::gen_keypair::<L, MU>(rng);
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        assert_eq!(bytes.len(), Self::SERIALIZED_LEN);
 
-    // Hash the public key
-    let hash_pke_pk = {
-        // Serialize the pubkey into a buffer of the appropriate size
-        let mut buf = [0u8; max_pke_pubkey_serialized_len()];
-        let pk_bytes = &mut buf[..PkePublicKey::<L>::serialized_len()];
-        pke_pk.to_bytes(pk_bytes);
-        Sha3_256::digest(pk_bytes)
-    };
+        let (bytes, rest) = bytes.split_at(PkeSecretKey::<L>::SERIALIZED_LEN);
+        let pke_sk = PkeSecretKey::from_bytes(bytes);
 
-    // Sample some random bytes for z
-    let mut z = [0u8; 32];
-    rng.fill_bytes(&mut z);
+        let (bytes, rest) = rest.split_at(PkePublicKey::<L>::SERIALIZED_LEN);
+        let pke_pk = PkePublicKey::from_bytes(bytes);
 
-    let sk = KemSecretKey {
-        z,
-        hash_pke_pk: hash_pke_pk.into(),
-        pke_pk: pke_pk.clone(),
-        pke_sk,
-    };
-    (sk, pke_pk)
+        let (bytes, rest) = rest.split_at(32);
+        let hash_pke_pk = bytes.try_into().unwrap();
+
+        let (z, rest) = rest.split_at(32);
+        let z = z.try_into().unwrap();
+
+        Self {
+            z,
+            hash_pke_pk,
+            pke_pk,
+            pke_sk,
+        }
+    }
+
+    pub(crate) fn public_key(&self) -> &KemPublicKey<L> {
+        &self.pke_pk
+    }
 }
 
 /// Encapsulate a shared secret to the given public key. Returns the shared secret.
@@ -99,7 +124,7 @@ pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     let hash_pke_pk = {
         // Serialize the pubkey into a buffer of the appropriate size
         let mut buf = [0u8; max_pke_pubkey_serialized_len()];
-        let pk_bytes = &mut buf[..PkePublicKey::<L>::serialized_len()];
+        let pk_bytes = &mut buf[..PkePublicKey::<L>::SERIALIZED_LEN];
         pke_pk.to_bytes(pk_bytes);
         Sha3_256::digest(pk_bytes)
     };
@@ -205,10 +230,11 @@ mod test {
         let mut rng = rand::thread_rng();
 
         for _ in 0..100 {
-            let (sk, pk) = gen_keypair::<L, MU>(&mut rng);
+            let sk = KemSecretKey::<L>::generate::<MU>(&mut rng);
+            let pk = sk.public_key();
             let mut ct_buf = vec![0u8; ciphertext_len::<L, MODULUS_T_BITS>()];
 
-            let ss1 = encap::<L, MU, MODULUS_T_BITS>(&mut rng, &pk, &mut ct_buf);
+            let ss1 = encap::<L, MU, MODULUS_T_BITS>(&mut rng, pk, &mut ct_buf);
             let ss2 = decap::<L, MU, MODULUS_T_BITS>(&sk, &ct_buf);
             assert_eq!(ss1, ss2);
         }

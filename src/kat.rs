@@ -116,13 +116,14 @@ fn kat_helper<const L: usize, const MODULUS_BITS_T: usize, const MU: usize>(file
 
     for tv in test_vectors {
         let mut rng = KatRng::new(&tv.seed);
-        let (sk, pk) = crate::kem::gen_keypair::<L, MU>(&mut rng);
+        let sk = KemSecretKey::<L>::generate::<MU>(&mut rng);
+        let pk = sk.public_key();
 
-        let mut sk_buf = vec![0u8; KemSecretKey::<L>::serialized_len()];
+        let mut sk_buf = vec![0u8; KemSecretKey::<L>::SERIALIZED_LEN];
         sk.to_bytes(&mut sk_buf);
         assert_eq!(sk_buf, tv.sk, "secret keys do not match");
 
-        let mut pk_buf = vec![0u8; KemPublicKey::<L>::serialized_len()];
+        let mut pk_buf = vec![0u8; KemPublicKey::<L>::SERIALIZED_LEN];
         pk.to_bytes(&mut pk_buf);
         assert_eq!(pk_buf, tv.pk, "public keys do not match");
 

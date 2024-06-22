@@ -16,3 +16,4 @@ mod util;
 mod kat;
 
 pub extern crate kem as kem_traits;
+pub use impls::*;

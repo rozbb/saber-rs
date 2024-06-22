@@ -24,19 +24,24 @@ pub struct PkePublicKey<const L: usize> {
 }
 
 impl<const L: usize> PkeSecretKey<L> {
+    pub const SERIALIZED_LEN: usize = L * MODULUS_Q_BITS * RING_DEG / 8;
+
     pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
-        assert_eq!(out_buf.len(), Self::serialized_len());
+        assert_eq!(out_buf.len(), Self::SERIALIZED_LEN);
         self.0.to_bytes(out_buf, MODULUS_Q_BITS);
     }
 
-    pub(crate) fn serialized_len() -> usize {
-        L * MODULUS_Q_BITS * RING_DEG / 8
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Self {
+        assert_eq!(bytes.len(), Self::SERIALIZED_LEN);
+        Self(Matrix::from_bytes(bytes, MODULUS_Q_BITS))
     }
 }
 
 impl<const L: usize> PkePublicKey<L> {
+    pub const SERIALIZED_LEN: usize = 32 + L * MODULUS_P_BITS * RING_DEG / 8;
+
     pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
-        let out_size = Self::serialized_len();
+        let out_size = Self::SERIALIZED_LEN;
         assert_eq!(out_buf.len(), out_size);
 
         // We write out the LWR sample and then the seed. The spec actually said to do the opposite, but the reference impl does it this way
@@ -49,9 +54,15 @@ impl<const L: usize> PkePublicKey<L> {
         out_buf[out_size - 32..].copy_from_slice(&self.seed);
     }
 
-    /// The length of a serialized public key
-    pub(crate) fn serialized_len() -> usize {
-        32 + L * MODULUS_P_BITS * RING_DEG / 8
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Self {
+        assert_eq!(bytes.len(), Self::SERIALIZED_LEN);
+
+        let (vec_bytes, seed) = bytes.split_at(Self::SERIALIZED_LEN - 32);
+        let vec = Matrix::from_bytes(vec_bytes, MODULUS_P_BITS);
+        Self {
+            seed: seed.try_into().unwrap(),
+            vec,
+        }
     }
 }
 
