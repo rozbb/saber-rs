@@ -199,19 +199,19 @@ pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     // r' = SHA3-256(ct)
     let rprime = Sha3_256::digest(ciphertext);
 
-    // suffix = k if reconstruction matched, else z
+    // suffix = k if reconstruction matched, else z. We do this in constant time using `subtle`
     let reconstruction_matched = reconstructed_ct.ct_eq(ciphertext);
     let mut suffix = [0u8; 32];
-    for i in 0..32 {
-        suffix[i] = u8::conditional_select(&sk.z[i], &k[i], reconstruction_matched);
+    for ((z_byte, k_byte), suffix_byte) in sk.z.iter().zip(k.iter()).zip(suffix.iter_mut()) {
+        *suffix_byte = u8::conditional_select(z_byte, k_byte, reconstruction_matched);
     }
 
-    // session key = SHA3-256(k || r')
+    // session key = SHA3-256(suffix || r')
     // The spec has the hash input order switched, but we're following the reference impl
     // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L46
 
     Sha3_256::new()
-        .chain_update(k)
+        .chain_update(suffix)
         .chain_update(rprime)
         .finalize()
         .into()
@@ -223,13 +223,13 @@ mod test {
     use crate::consts::*;
 
     #[test]
-    fn cca_correctness() {
-        test_encap_decap::<LIGHTSABER_L, LIGHTSABER_MODULUS_T_BITS, LIGHTSABER_MU>();
-        test_encap_decap::<SABER_L, SABER_MODULUS_T_BITS, SABER_MU>();
-        test_encap_decap::<FIRESABER_L, FIRESABER_MODULUS_T_BITS, FIRESABER_MU>();
+    fn kem() {
+        test_encap_decap::<LIGHTSABER_L, LIGHTSABER_MU, LIGHTSABER_MODULUS_T_BITS>();
+        test_encap_decap::<SABER_L, SABER_MU, SABER_MODULUS_T_BITS>();
+        test_encap_decap::<FIRESABER_L, FIRESABER_MU, FIRESABER_MODULUS_T_BITS>();
     }
 
-    fn test_encap_decap<const L: usize, const MODULUS_T_BITS: usize, const MU: usize>() {
+    fn test_encap_decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>() {
         let mut rng = rand::thread_rng();
 
         for _ in 0..100 {
@@ -240,6 +240,11 @@ mod test {
             let ss1 = encap::<L, MU, MODULUS_T_BITS>(&mut rng, pk, &mut ct_buf);
             let ss2 = decap::<L, MU, MODULUS_T_BITS>(&sk, &ct_buf);
             assert_eq!(ss1, ss2);
+
+            // Check that decapping a different ciphertext yields garbage
+            ct_buf[0] ^= 0x01;
+            let ss3 = decap::<L, MU, MODULUS_T_BITS>(&sk, &ct_buf);
+            assert_ne!(ss2, ss3);
         }
     }
 }
