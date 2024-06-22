@@ -181,6 +181,7 @@ fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     poly_add(&poly_add(&z0.0, &z1.0).0, &z2.0)
 }
 
+/* Commenting out for now. This works just fine, but it's slower than karatsuba
 /// Does schoolbook multiplication of two ring elements
 fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     let mut result = RingElem::default();
@@ -207,6 +208,7 @@ fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
 
     result
 }
+*/
 
 impl<'a> Add for &'a RingElem {
     type Output = RingElem;
