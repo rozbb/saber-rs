@@ -1,12 +1,8 @@
 //! This module contains code for running known-answer tests (KATs)
 
-use crate::{
-    kem::{decap, encap, KemPublicKey, KemSecretKey},
-    pke::ciphertext_len,
-};
-
 use std::{string::String, vec::Vec};
 
+use kem_traits::{Decapsulate, Encapsulate};
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -109,60 +105,72 @@ fn drbg() {
     assert_eq!(buf, ref1);
 }
 
-/// Opens the given RSP file and tests our impl against the given vectors
-fn kat_helper<const L: usize, const MODULUS_BITS_T: usize, const MU: usize>(filename: &str) {
-    let kat_json_file = std::fs::File::open(filename).unwrap();
-    let test_vectors = serde_json::from_reader::<_, Vec<TestVector>>(kat_json_file).unwrap();
+/// A macro to generate KAT tests for a given Saber variant
+macro_rules! variant_kat {
+    (
+        $test_name:ident,
+        $filename:expr,
+        $variant_name:ident,
+        $pubkey_name:ident,
+        $privkey_name:ident,
+        $ciphertext_name:ident,
+    ) => {
+        /// Opens the given RSP file and tests our impl against the given vectors
+        #[test]
+        fn $test_name() {
+            use $crate::impls::$variant_name::*;
 
-    for tv in test_vectors {
-        let mut rng = KatRng::new(&tv.seed);
-        let sk = KemSecretKey::<L>::generate::<MU>(&mut rng);
-        let pk = sk.public_key();
+            let kat_json_file = std::fs::File::open($filename).unwrap();
+            let test_vectors =
+                serde_json::from_reader::<_, Vec<TestVector>>(kat_json_file).unwrap();
 
-        let mut sk_buf = vec![0u8; KemSecretKey::<L>::SERIALIZED_LEN];
-        sk.to_bytes(&mut sk_buf);
-        assert_eq!(sk_buf, tv.sk, "secret keys do not match");
+            for tv in test_vectors {
+                let mut rng = KatRng::new(&tv.seed);
+                let sk = $privkey_name::generate(&mut rng);
+                let pk = sk.public_key();
 
-        let mut pk_buf = vec![0u8; KemPublicKey::<L>::SERIALIZED_LEN];
-        pk.to_bytes(&mut pk_buf);
-        assert_eq!(pk_buf, tv.pk, "public keys do not match");
+                let mut sk_buf = vec![0u8; $privkey_name::SERIALIZED_LEN];
+                sk.to_bytes(&mut sk_buf);
+                assert_eq!(sk_buf, tv.sk, "secret keys do not match");
 
-        let mut ct_buf = vec![0u8; ciphertext_len::<L, MODULUS_BITS_T>()];
-        let ss1 = encap::<L, MU, MODULUS_BITS_T>(&mut rng, &pk, &mut ct_buf);
-        assert_eq!(ct_buf, tv.ct, "ciphertexts do no match");
+                let mut pk_buf = vec![0u8; $pubkey_name::SERIALIZED_LEN];
+                pk.to_bytes(&mut pk_buf);
+                assert_eq!(pk_buf, tv.pk, "public keys do not match");
 
-        let ss2 = decap::<L, MU, MODULUS_BITS_T>(&sk, &ct_buf);
-        assert_eq!(ss1, ss2);
-        assert_eq!(ss1, tv.ss.as_slice(), "shared secrets do not match");
-    }
+                let (ct, ss1) = pk.encapsulate(&mut rng).unwrap();
+                assert_eq!(ct.as_ref(), tv.ct, "ciphertexts do no match");
+
+                let ss2 = sk.decapsulate(&ct).unwrap();
+                assert_eq!(ss1, ss2);
+                assert_eq!(ss1, tv.ss.as_slice(), "shared secrets do not match");
+            }
+        }
+    };
 }
 
-#[test]
-fn kat_lightsaber() {
-    let filename = "PQCkemKAT_1568.rsp.json";
-    const L: usize = 2;
-    const MODULUS_BITS_T: usize = 3;
-    const MU: usize = 10;
+variant_kat!(
+    kat_lightsaber,
+    "PQCkemKAT_1568.rsp.json",
+    lightsaber,
+    LightsaberPublicKey,
+    LightsaberSecretKey,
+    LightsaberCiphertext,
+);
 
-    kat_helper::<L, MODULUS_BITS_T, MU>(filename);
-}
+variant_kat!(
+    kat_saber,
+    "PQCkemKAT_2304.rsp.json",
+    saber,
+    SaberPublicKey,
+    SaberSecretKey,
+    SaberCiphertext,
+);
 
-#[test]
-fn kat_saber() {
-    let filename = "PQCkemKAT_2304.rsp.json";
-    const L: usize = 3;
-    const MODULUS_BITS_T: usize = 4;
-    const MU: usize = 8;
-
-    kat_helper::<L, MODULUS_BITS_T, MU>(filename);
-}
-
-#[test]
-fn kat_firesaber() {
-    let filename = "PQCkemKAT_3040.rsp.json";
-    const L: usize = 4;
-    const MODULUS_BITS_T: usize = 6;
-    const MU: usize = 6;
-
-    kat_helper::<L, MODULUS_BITS_T, MU>(filename);
-}
+variant_kat!(
+    kat_firesaber,
+    "PQCkemKAT_3040.rsp.json",
+    firesaber,
+    FiresaberPublicKey,
+    FiresaberSecretKey,
+    FiresaberCiphertext,
+);

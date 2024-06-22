@@ -7,7 +7,7 @@ extern crate std;
 mod consts;
 mod gen;
 mod impls;
-pub mod kem;
+mod kem;
 mod matrix_arith;
 mod pke;
 mod ring_arith;
