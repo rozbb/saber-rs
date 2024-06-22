@@ -7,7 +7,9 @@ use core::ops::{Add, Mul, Sub};
 
 use rand_core::CryptoRngCore;
 
-/// The degree (-1) of a polynomial at which point we revert to schoolbook multiplication
+// The degree (-1) of a polynomial at which point we revert to schoolbook multiplication.
+// On my computer, 128 is the optimal choice. This is kinda odd because it means we only do
+// 1 round of Karatsbua mult.
 const KARATSUBA_THRESHOLD: usize = 128;
 
 /// An element of the ring (Z/2^13 Z)[X] / (X^256 + 1)
@@ -78,8 +80,9 @@ impl<'a> Mul for &'a RingElem {
 
     // School book multiplication
     fn mul(self, other: &'a RingElem) -> Self::Output {
-        schoolbook_mul_helper(&self.0, &other.0)
-        //karatsuba_mul_helper(&self.0, &other.0)
+        karatsuba_mul_helper(&self.0, &other.0)
+        // Replace the above line with the below line to remove Karatsuba optimization
+        //schoolbook_mul_helper(&self.0, &other.0)
     }
 }
 
@@ -112,9 +115,15 @@ fn poly_sub(x: &[u16], y: &[u16]) -> RingElem {
 fn mul_by_xpow(p: &RingElem, shift: usize) -> RingElem {
     let mut ret = RingElem::default();
     for i in 0..RING_DEG {
-        let is_neg = ((i + shift) / RING_DEG) % 2 == 1;
         let idx = (i + shift) % RING_DEG;
+        // Have we wrapped around the ring degree and odd number of times?
+        let is_neg = ((i + shift) / RING_DEG) % 2 == 1;
+
+        // is_neg is a function of i and shift, and shift is determined by our level in the
+        // multiplication. So is_neg is a public value and therefore okay to branch on
         if is_neg {
+            // If we've wrapped the ring degree an odd number of time, multiply by -1. This is
+            // because the ring is Z[X]/(X^256 + 1), so X^256 = -1
             ret.0[idx] = ret.0[idx].wrapping_sub(p.0[i]);
         } else {
             ret.0[idx] = ret.0[idx].wrapping_add(p.0[i]);
@@ -123,7 +132,7 @@ fn mul_by_xpow(p: &RingElem, shift: usize) -> RingElem {
     ret
 }
 
-/// Returns p*q as ring elements. p and q MUST be the same length
+/// Returns p*q as ring elements, using the Karatsuba algorithm. p and q MUST be the same length
 fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     assert_eq!(p.len(), q.len());
     let n = p.len();
