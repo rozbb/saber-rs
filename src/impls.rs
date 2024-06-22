@@ -18,6 +18,7 @@ pub type SharedSecret = [u8; 32];
 macro_rules! variant_impl {
     (
         $variant_name:ident,
+        $mod_doc:expr,
         $pubkey_name:ident,
         $privkey_name:ident,
         $ciphertext_name:ident,
@@ -25,16 +26,17 @@ macro_rules! variant_impl {
         $variant_mu:expr,
         $variant_modt_bits:expr
     ) => {
+        #[doc = $mod_doc]
         pub mod $variant_name {
             use super::*;
 
-            /// A secret key for the Saber KEM
+            /// A secret key for this KEM
             pub struct $privkey_name(KemSecretKey<$variant_ell>);
 
-            /// A public key for the Saber KEM
+            /// A public key for this KEM
             pub struct $pubkey_name(KemPublicKey<$variant_ell>);
 
-            /// A ciphertext, or "encapsulated key"", for the Saber KEM. This is a thin wrapper around
+            /// A ciphertext, or "encapsulated key"", for this KEM. This is a thin wrapper around
             /// a fixed-size byte array.
             #[derive(Clone)]
             pub struct $ciphertext_name([u8; ciphertext_len::<$variant_ell, $variant_modt_bits>()]);
@@ -118,10 +120,11 @@ macro_rules! variant_impl {
                 /// Encapsulation cannot fail
                 type Error = Infallible;
 
+                /// Encapsulates a fresh shared secret. This cannot fail.
                 fn encapsulate(
                     &self,
                     rng: &mut impl CryptoRngCore,
-                ) -> Result<($ciphertext_name, SharedSecret), Self::Error> {
+                ) -> Result<($ciphertext_name, SharedSecret), Infallible> {
                     let mut ciphertext = $ciphertext_name::default();
                     let shared_secret = crate::kem::encap::<
                         $variant_ell,
@@ -142,7 +145,7 @@ macro_rules! variant_impl {
                 fn decapsulate(
                     &self,
                     encapsulated_key: &$ciphertext_name,
-                ) -> Result<SharedSecret, Self::Error> {
+                ) -> Result<SharedSecret, Infallible> {
                     Ok(crate::kem::decap::<
                         $variant_ell,
                         $variant_mu,
@@ -182,6 +185,7 @@ macro_rules! variant_impl {
 
 variant_impl!(
     lightsaber,
+    "LightSaber is designed to have security close to that of AES-128",
     LightsaberPublicKey,
     LightsaberSecretKey,
     LightsaberCiphertext,
@@ -192,6 +196,7 @@ variant_impl!(
 
 variant_impl!(
     saber,
+    "Saber is designed to have security close to that of AES-192",
     SaberPublicKey,
     SaberSecretKey,
     SaberCiphertext,
@@ -202,6 +207,7 @@ variant_impl!(
 
 variant_impl!(
     firesaber,
+    "FireSaber is designed to have security close to that of AES-256",
     FiresaberPublicKey,
     FiresaberSecretKey,
     FiresaberCiphertext,
