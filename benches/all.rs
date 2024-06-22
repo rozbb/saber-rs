@@ -1,30 +1,37 @@
+use saber_kem::{
+    firesaber::FiresaberSecretKey,
+    kem_traits::{Decapsulate, Encapsulate},
+    lightsaber::LightsaberSecretKey,
+    saber::SaberSecretKey,
+};
+
 use criterion::{criterion_group, criterion_main, Criterion};
-use saber::{ciphertext_len, kem};
 
-pub fn cca(c: &mut Criterion) {
-    const L: usize = 2;
-    const MODULUS_T_BITS: usize = 3;
-    const MU: usize = 10;
-    // 3,4,8 and 4,6,6 are the other param sets
+macro_rules! bench_variant {
+    ($bench_name:ident, $privkey_name:ident) => {
+        fn $bench_name(c: &mut Criterion) {
+            let mut rng = rand::thread_rng();
 
-    let mut rng = rand::thread_rng();
+            let gen_bench_name = format!("{}-gen-keypair", stringify!($bench_name));
+            c.bench_function(&gen_bench_name, |b| {
+                b.iter(|| $privkey_name::generate(&mut rng))
+            });
+            let sk = $privkey_name::generate(&mut rng);
+            let pk = sk.public_key();
 
-    c.bench_function("gen-keypair", |b| {
-        b.iter(|| kem::gen_keypair::<L, MU>(&mut rng))
-    });
-    let (sk, pk) = kem::gen_keypair::<L, MU>(&mut rng);
+            let encap_bench_name = format!("{}-encap", stringify!($bench_name));
+            c.bench_function(&encap_bench_name, |b| b.iter(|| pk.encapsulate(&mut rng)));
+            let (ct, _) = pk.encapsulate(&mut rng).unwrap();
 
-    let mut ct_buf = vec![0u8; ciphertext_len::<L, MODULUS_T_BITS>()];
-
-    c.bench_function("encap", |b| {
-        b.iter(|| kem::encap::<L, MU, MODULUS_T_BITS>(&mut rng, &pk, &mut ct_buf))
-    });
-    kem::encap::<L, MU, MODULUS_T_BITS>(&mut rng, &pk, &mut ct_buf);
-
-    c.bench_function("decap", |b| {
-        b.iter(|| kem::decap::<L, MU, MODULUS_T_BITS>(&sk, &ct_buf))
-    });
+            let decap_bench_name = format!("{}-decap", stringify!($bench_name));
+            c.bench_function(&decap_bench_name, |b| b.iter(|| sk.decapsulate(&ct)));
+        }
+    };
 }
 
-criterion_group!(benches, cca);
+bench_variant!(lightsaber, LightsaberSecretKey);
+bench_variant!(saber, SaberSecretKey);
+bench_variant!(firesaber, FiresaberSecretKey);
+
+criterion_group!(benches, lightsaber, saber, firesaber);
 criterion_main!(benches);
