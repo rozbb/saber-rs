@@ -9,13 +9,12 @@
 )]
 #![doc = include_str!("../README.md")]
 
+mod arithmetic;
 mod consts;
 mod gen;
 mod impls;
 mod kem;
-mod matrix_arith;
 mod pke;
-mod ring_arith;
 mod ser;
 
 pub extern crate kem as kem_traits;

@@ -1,9 +1,8 @@
 //! This file implements methods for generating uniform matrices and binomially distributed vectors
 
 use crate::{
+    arithmetic::{Matrix, RingElem},
     consts::{MAX_MU, MODULUS_Q_BITS, RING_DEG},
-    matrix_arith::Matrix,
-    ring_arith::RingElem,
     ser::deserialize,
 };
 

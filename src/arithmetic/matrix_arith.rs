@@ -1,6 +1,6 @@
 //! This file defines and implements matrices over our ring
 
-use crate::{consts::RING_DEG, ring_arith::RingElem};
+use crate::{arithmetic::RingElem, consts::RING_DEG};
 
 /// An element of R^{x×y} where R is a [`RingElem`], stored in row-major order
 // We store the matrix in row-major order, so the outer array is the number of rows, i.e., the

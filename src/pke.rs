@@ -1,12 +1,11 @@
 //! This file implements the IND-CPA-secure Saber.PKE scheme
 
 use crate::{
+    arithmetic::{Matrix, RingElem},
     consts::MAX_L,
     consts::MAX_MODULUS_T_BITS,
     consts::{MODULUS_P_BITS, MODULUS_Q_BITS, RING_DEG},
     gen::{gen_matrix_from_seed, gen_secret_from_seed},
-    matrix_arith::Matrix,
-    ring_arith::RingElem,
     ser::deserialize,
 };
 
