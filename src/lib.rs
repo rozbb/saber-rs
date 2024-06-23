@@ -1,8 +1,13 @@
-#![no_std]
-
-#[cfg(test)]
-#[macro_use]
-extern crate std;
+#![forbid(unsafe_code)]
+#![warn(
+//    clippy::unwrap_used, TODO: needs addressing
+    missing_docs,
+    rust_2018_idioms,
+    unused_lifetimes,
+    unused_qualifications
+)]
+#![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
+#![doc = include_str!("../README.md")]
 
 mod consts;
 mod gen;

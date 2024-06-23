@@ -7,6 +7,11 @@ edition = "2021"
 keywords = ["cryptography", "crypto", "post-quantum", "encapsulation", "kem"]
 categories = ["cryptography", "no-std"]
 
+[features]
+default = []
+std = ["alloc"]
+alloc = []
+
 [dependencies]
 kem = "0.3.0-pre.0"
 rand_core = "0.6.4"
