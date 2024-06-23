@@ -94,10 +94,10 @@ impl<const L: usize> KemSecretKey<L> {
         let pke_pk = PkePublicKey::from_bytes(bytes);
 
         let (bytes, rest) = rest.split_at(32);
-        let hash_pke_pk = bytes.try_into().unwrap();
+        let hash_pke_pk = bytes.try_into().expect("split_at 32 is 32-bytes long");
 
         let (z, rest) = rest.split_at(32);
-        let z = z.try_into().unwrap();
+        let z = z.try_into().expect("split_at 32 is 32-bytes long");
 
         assert_eq!(rest.len(), 0);
 
@@ -151,8 +151,10 @@ pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     // The spec has the order switched, but, again, we're following the reference impl
     // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L42-L46
     let (k, r) = kr.split_at(32);
-    let k: [u8; 32] = k.try_into().unwrap();
-    let r: [u8; 32] = r.try_into().unwrap();
+    let k: [u8; 32] = k.try_into().expect("split-at 32 is 32-bytes long");
+    let r: [u8; 32] = r
+        .try_into()
+        .expect("[u8; 64].split_at(32).1 is 32-bytes long");
 
     // ct = Saber.PKE.Enc_pk(m; r)
     pke::encrypt_deterministic::<L, MU, MODULUS_T_BITS>(kem_pk, &m, &r, out_buf);
@@ -196,8 +198,10 @@ pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     // The spec has the order switched, but, again, we're following the reference impl
     // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/kem.c#L42-L46
     let (k, r) = kr.split_at(32);
-    let k: [u8; 32] = k.try_into().unwrap();
-    let r: [u8; 32] = r.try_into().unwrap();
+    let k: [u8; 32] = k.try_into().expect("split-at 32 is 32-bytes long");
+    let r: [u8; 32] = r
+        .try_into()
+        .expect("[u8; 64].split_at(32).1 is 32-bytes long");
 
     // ct' = Saber.PKE.Enc_pk(m; r)
     let mut buf = [0u8; max_ciphertext_len()];

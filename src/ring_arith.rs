@@ -191,7 +191,7 @@ fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
 
         // Do multiplications up until i+j == RING_DEG
         for _ in 0..(RING_DEG - i) {
-            let (j, q_coeff) = q_iter.next().unwrap();
+            let (j, q_coeff) = q_iter.next().expect("there are RING_DEG elems in q_iter");
             let idx = i + j;
             let prod = p_coeff.wrapping_mul(*q_coeff);
             result.0[idx] = result.0[idx].wrapping_add(prod);

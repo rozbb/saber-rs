@@ -93,10 +93,12 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
         assert_eq!(out_buf.len(), X * Y * bits_per_elem * RING_DEG / 8);
 
         let mut chunk_iter = out_buf.chunks_mut(bits_per_elem * RING_DEG / 8);
-        for i in 0..X {
-            for j in 0..Y {
-                let out_chunk = chunk_iter.next().unwrap();
-                self.0[i][j].to_bytes(out_chunk, bits_per_elem);
+        for row in self.0.iter() {
+            for entry in row.iter() {
+                let out_chunk = chunk_iter
+                    .next()
+                    .expect("length check at beginning ensures X*Y many chunks");
+                entry.to_bytes(out_chunk, bits_per_elem);
             }
         }
     }
@@ -110,10 +112,12 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
         let mut result = Matrix::default();
 
         let mut chunk_iter = bytes.chunks(bits_per_elem * RING_DEG / 8);
-        for i in 0..X {
-            for j in 0..Y {
-                let chunk = chunk_iter.next().unwrap();
-                result.0[i][j] = RingElem::from_bytes(chunk, bits_per_elem);
+        for row in result.0.iter_mut() {
+            for entry in row.iter_mut() {
+                let chunk = chunk_iter
+                    .next()
+                    .expect("length check at beginning ensures X*Y many chunks");
+                *entry = RingElem::from_bytes(chunk, bits_per_elem);
             }
         }
 
