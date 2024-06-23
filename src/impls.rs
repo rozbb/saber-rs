@@ -10,9 +10,20 @@ use core::convert::Infallible;
 
 use kem_traits::{Decapsulate, Encapsulate};
 use rand_core::CryptoRngCore;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
-/// A shared secret of a KEM execution
-pub type SharedSecret = [u8; 32];
+/// A shared secret of a KEM execution. This is just a `[u8; 32]` that zeroes itself from memory
+/// when it goes out of scope.
+#[derive(Zeroize, ZeroizeOnDrop)]
+pub struct SharedSecret([u8; 32]);
+
+impl SharedSecret {
+    /// Returns the shared secret as a slice
+    #[inline]
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
 
 /// Defines convenience types and impls for a given Saber variant
 macro_rules! variant_impl {
@@ -120,7 +131,7 @@ macro_rules! variant_impl {
                         $variant_modt_bits,
                     >(rng, &self.0, &mut ciphertext.0);
 
-                    Ok((ciphertext, shared_secret))
+                    Ok((ciphertext, SharedSecret(shared_secret)))
                 }
             }
 
@@ -128,17 +139,18 @@ macro_rules! variant_impl {
                 /// Decapsulation cannot fail
                 type Error = Infallible;
 
-                /// Decapsulates an encapsulated key and returns the resulting shared secret.
-                /// If the encapsulated key is invalid, then the shared secret will be psuedorandom garbage.
+                /// Decapsulates an encapsulated key and returns the resulting shared secret. If
+                /// the encapsulated key is invalid, then the shared secret will be psuedorandom
+                /// garbage.
                 fn decapsulate(
                     &self,
                     encapsulated_key: &$ciphertext_name,
                 ) -> Result<SharedSecret, Infallible> {
-                    Ok(crate::kem::decap::<
+                    Ok(SharedSecret(crate::kem::decap::<
                         $variant_ell,
                         $variant_mu,
                         $variant_modt_bits,
-                    >(&self.0, &encapsulated_key.0))
+                    >(&self.0, &encapsulated_key.0)))
                 }
             }
 
@@ -165,7 +177,7 @@ macro_rules! variant_impl {
                 receiver_ct.as_mut().copy_from_slice(ct_bytes);
                 let ss2 = sk.decapsulate(&receiver_ct).unwrap();
 
-                assert_eq!(ss1, ss2);
+                assert_eq!(ss1.as_bytes(), ss2.as_bytes());
             }
         }
     };

@@ -141,8 +141,12 @@ macro_rules! variant_kat {
                 assert_eq!(ct.as_ref(), tv.ct, "ciphertexts do no match");
 
                 let ss2 = sk.decapsulate(&ct).unwrap();
-                assert_eq!(ss1, ss2);
-                assert_eq!(ss1, tv.ss.as_slice(), "shared secrets do not match");
+                assert_eq!(ss1.as_bytes(), ss2.as_bytes());
+                assert_eq!(
+                    ss1.as_bytes(),
+                    tv.ss.as_slice(),
+                    "shared secrets do not match"
+                );
             }
         }
     };

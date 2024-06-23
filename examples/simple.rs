@@ -45,8 +45,9 @@ fn main() {
     // Use the secret key to decapsulate the ciphertext
     let ss2 = sk.decapsulate(&receiver_ct).unwrap();
 
-    // Ensure the shared secrets are equal
-    assert_eq!(ss1, ss2);
+    // Check the shared secrets are equal. NOTE is not a constant-time check (ie not secure). We
+    // only do this for testing purposes.
+    assert_eq!(ss1.as_bytes(), ss2.as_bytes());
 
     println!("KEM ran successfully");
 }
