@@ -232,7 +232,6 @@ mod test {
     use crate::consts::RING_DEG;
 
     use rand::{thread_rng, Rng, RngCore};
-    use std::vec::Vec;
 
     // Checks that a * b == b * a and a + b == b + a for ring elements a, b
     #[test]
@@ -275,68 +274,79 @@ mod test {
     fn from_bytes() {
         let mut rng = thread_rng();
 
+        // The largest buffer we'll need for the following tests. We make 2 because we need to
+        // compare values in some places
+        let mut backing_buf1 = [0u8; 16 * RING_DEG / 8];
+        let mut backing_buf2 = [0u8; 16 * RING_DEG / 8];
+
         for _ in 0..1000 {
             // Check that from_bytes matches the reference impl from_bytes for N=2^13,2^10,2^1
             let bits_per_elem = 13;
-            let mut bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
-            rng.fill_bytes(&mut bytes);
+            let bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
+            rng.fill_bytes(bytes);
             assert_eq!(
                 reference_impl_from_bytes_mod8192(&bytes),
                 RingElem::from_bytes(&bytes, 13)
             );
+
             // Now check it matches the reference to_bytes impl
             let elem = RingElem::rand(&mut rng);
-            let mut my_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
-            let mut ref_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
-            elem.to_bytes(&mut my_bytes, bits_per_elem);
-            reference_impl_to_bytes_mod8192(&elem, &mut ref_bytes);
+            let my_bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
+            let ref_bytes = &mut backing_buf2[..bits_per_elem * RING_DEG / 8];
+            elem.to_bytes(my_bytes, bits_per_elem);
+            reference_impl_to_bytes_mod8192(&elem, ref_bytes);
             assert_eq!(my_bytes, ref_bytes);
 
             let bits_per_elem = 10;
-            let mut bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
-            rng.fill_bytes(&mut bytes);
+            let bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
+            rng.fill_bytes(bytes);
             assert_eq!(
                 reference_impl_from_bytes_mod1024(&bytes).0,
                 RingElem::from_bytes(&bytes, 10).0,
             );
 
             let bits_per_elem = 1;
-            let mut bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
-            rng.fill_bytes(&mut bytes);
+            let bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
+            rng.fill_bytes(bytes);
             assert_eq!(
                 reference_impl_from_bytes_mod2(&bytes).0,
                 RingElem::from_bytes(&bytes, 1).0,
             );
+
             // Now check it matches the reference to_bytes impl
             let elem = RingElem::rand(&mut rng);
-            let mut my_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
-            let mut ref_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
-            elem.to_bytes(&mut my_bytes, bits_per_elem);
-            reference_impl_to_bytes_mod2(&elem, &mut ref_bytes);
+            // The reference impl actually requires that the buffer is zeroed before use
+            backing_buf2.fill(0);
+            let my_bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
+            let ref_bytes = &mut backing_buf2[..bits_per_elem * RING_DEG / 8];
+            elem.to_bytes(my_bytes, bits_per_elem);
+            reference_impl_to_bytes_mod2(&elem, ref_bytes);
             assert_eq!(my_bytes, ref_bytes);
 
             // Now check that to_bytes and from_bytes are inverses
 
             // Pick a random bits_per_elem
-            let bits_per_elem = rng.gen_range(1..=13);
-            let bitmask = (1 << bits_per_elem) - 1;
+            for _ in 0..10 {
+                let bits_per_elem = rng.gen_range(1..=13);
+                let bitmask = (1 << bits_per_elem) - 1;
 
-            // Generate a random element and make sure none of the values exceed 2^bits_per_elem
-            let mut p = RingElem::rand(&mut rng);
-            p.0.iter_mut().for_each(|e| *e &= bitmask);
+                // Generate a random element and make sure none of the values exceed 2^bits_per_elem
+                let mut p = RingElem::rand(&mut rng);
+                p.0.iter_mut().for_each(|e| *e &= bitmask);
 
-            // Check that a round trip preserves the polynomial
-            let mut p_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
-            p.to_bytes(&mut p_bytes, bits_per_elem);
-            assert_eq!(p, RingElem::from_bytes(&p_bytes, bits_per_elem));
+                // Check that a round trip preserves the polynomial
+                let p_bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
+                p.to_bytes(p_bytes, bits_per_elem);
+                assert_eq!(p, RingElem::from_bytes(&p_bytes, bits_per_elem));
 
-            // Now other way around
-            let mut p_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
-            rng.fill_bytes(&mut p_bytes);
-            let p = RingElem::from_bytes(&p_bytes, bits_per_elem);
-            let mut new_p_bytes = vec![0u8; bits_per_elem * RING_DEG / 8];
-            p.to_bytes(&mut new_p_bytes, bits_per_elem);
-            assert_eq!(p_bytes, new_p_bytes);
+                // Now other way around
+                let p_bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
+                rng.fill_bytes(p_bytes);
+                let p = RingElem::from_bytes(&p_bytes, bits_per_elem);
+                let new_p_bytes = &mut backing_buf2[..bits_per_elem * RING_DEG / 8];
+                p.to_bytes(new_p_bytes, bits_per_elem);
+                assert_eq!(p_bytes, new_p_bytes);
+            }
         }
     }
 
@@ -348,7 +358,8 @@ mod test {
         let mut poly = RingElem::default();
         let data = &mut poly.0;
 
-        let bytes: Vec<u16> = b.iter().map(|&x| x as u16).collect();
+        let b_arr: [u8; 13 * RING_DEG / 8] = b.try_into().unwrap();
+        let bytes = b_arr.map(|x| x as u16);
 
         for j in 0..RING_DEG / 8 {
             offset_byte = 13 * j;
@@ -386,7 +397,9 @@ mod test {
         let mut poly = RingElem::default();
         let data = &mut poly.0;
 
-        let bytes: Vec<u16> = b.iter().map(|&x| x as u16).collect();
+        let b_arr: [u8; 10 * RING_DEG / 8] = b.try_into().unwrap();
+        let bytes = b_arr.map(|x| x as u16);
+
         for j in 0..RING_DEG / 4 {
             offset_byte = 5 * j;
             offset_data = 4 * j;
@@ -442,7 +455,9 @@ mod test {
         let mut poly = RingElem::default();
         let data = &mut poly.0;
 
-        let bytes: Vec<u16> = b.iter().map(|&x| x as u16).collect();
+        let b_arr: [u8; 1 * RING_DEG / 8] = b.try_into().unwrap();
+        let bytes = b_arr.map(|x| x as u16);
+
         for j in 0..32 {
             {
                 for i in 0..8 {

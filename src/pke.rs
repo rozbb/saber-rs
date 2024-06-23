@@ -215,6 +215,8 @@ mod test {
     // Helper function that encrypts and decrypts a random 32-byte message
     fn test_enc_dec<const L: usize, const MODULUS_T_BITS: usize, const MU: usize>() {
         let mut rng = rand::thread_rng();
+        let mut backing_buf =
+            [0u8; MAX_MODULUS_T_BITS * RING_DEG / 8 + MAX_L * MODULUS_P_BITS * RING_DEG / 8];
 
         for _ in 0..100 {
             let (sk, pk) = gen_keypair::<L, MU>(&mut rng);
@@ -223,10 +225,10 @@ mod test {
             let mut msg = [0u8; 32];
             rng.fill_bytes(&mut enc_seed);
             rng.fill_bytes(&mut msg);
-            let mut ct_buf =
-                vec![0u8; MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8];
+            let ct_buf = &mut backing_buf
+                [..MODULUS_T_BITS * RING_DEG / 8 + L * MODULUS_P_BITS * RING_DEG / 8];
 
-            encrypt_deterministic::<L, MU, MODULUS_T_BITS>(&pk, &msg, &enc_seed, &mut ct_buf);
+            encrypt_deterministic::<L, MU, MODULUS_T_BITS>(&pk, &msg, &enc_seed, ct_buf);
             let recovered_msg = decrypt::<L, MODULUS_T_BITS>(&sk, &ct_buf);
             assert_eq!(msg, recovered_msg);
         }

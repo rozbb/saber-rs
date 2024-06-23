@@ -42,6 +42,9 @@ pub(crate) fn deserialize<const N: usize>(bytes: &[u8], bits_per_elem: usize) ->
 pub(crate) fn serialize(data: &[u16], out_buf: &mut [u8], bits_per_elem: usize) {
     assert_eq!(out_buf.len(), bits_per_elem * data.len() / 8);
 
+    // Since we use OR to set the output bits, we must clear the buffer at the beginning
+    out_buf.fill(0);
+
     // We only want to write the lower bits_per_elem bits of any element
     let bitmask = (1 << bits_per_elem) - 1;
 
