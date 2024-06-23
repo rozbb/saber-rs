@@ -129,13 +129,13 @@ macro_rules! variant_kat {
                 let sk = $privkey_name::generate(&mut rng);
                 let pk = sk.public_key();
 
-                let mut sk_buf = vec![0u8; $privkey_name::SERIALIZED_LEN];
+                let mut sk_buf = [0u8; $privkey_name::SERIALIZED_LEN];
                 sk.to_bytes(&mut sk_buf);
-                assert_eq!(sk_buf, tv.sk, "secret keys do not match");
+                assert_eq!(sk_buf, tv.sk.as_slice(), "secret keys do not match");
 
-                let mut pk_buf = vec![0u8; $pubkey_name::SERIALIZED_LEN];
+                let mut pk_buf = [0u8; $pubkey_name::SERIALIZED_LEN];
                 pk.to_bytes(&mut pk_buf);
-                assert_eq!(pk_buf, tv.pk, "public keys do not match");
+                assert_eq!(pk_buf, tv.pk.as_slice(), "public keys do not match");
 
                 let (ct, ss1) = pk.encapsulate(&mut rng).unwrap();
                 assert_eq!(ct.as_ref(), tv.ct, "ciphertexts do no match");

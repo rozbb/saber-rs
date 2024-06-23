@@ -55,19 +55,13 @@ macro_rules! variant_impl {
                     Self(KemSecretKey::generate::<$variant_mu>(rng))
                 }
 
-                /// Serialize this secret key into `out_buf`. `out_buf` MUST have length `Self::SERIALIZED_LEN`.
-                ///
-                /// # Panics
-                /// Panics if `out_buf.len() != Self::SERIALIZED_LEN`.
-                pub fn to_bytes(&self, out_buf: &mut [u8]) {
+                /// Serializes this secret key into `out_buf`, of length `Self::SERIALIZED_LEN`
+                pub fn to_bytes(&self, out_buf: &mut [u8; Self::SERIALIZED_LEN]) {
                     self.0.to_bytes(out_buf);
                 }
 
-                /// Deserializes a secret key from `bytes`. `bytes` MUST have length `Self::SERIALIZED_LEN`.
-                ///
-                /// # Panics
-                /// Panics if `bytes.len() != Self::SERIALIZED_LEN`.
-                pub fn from_bytes(bytes: &[u8]) -> Self {
+                /// Deserializes a secret key from `bytes`, of length `Self::SERIALIZED_LEN`
+                pub fn from_bytes(bytes: &[u8; Self::SERIALIZED_LEN]) -> Self {
                     Self(KemSecretKey::from_bytes(bytes))
                 }
 
@@ -81,19 +75,13 @@ macro_rules! variant_impl {
                 /// The length of the public key when serialized to bytes
                 pub const SERIALIZED_LEN: usize = KemPublicKey::<$variant_ell>::SERIALIZED_LEN;
 
-                /// Serialize this public key into `out_buf`. `out_buf` MUST have length `Self::SERIALIZED_LEN`.
-                ///
-                /// # Panics
-                /// Panics if `out_buf.len() != Self::SERIALIZED_LEN`.
-                pub fn to_bytes(&self, out_buf: &mut [u8]) {
+                /// Serializes this public key into `out_buf`, of length `Self::SERIALIZED_LEN`
+                pub fn to_bytes(&self, out_buf: &mut [u8; Self::SERIALIZED_LEN]) {
                     self.0.to_bytes(out_buf);
                 }
 
-                /// Deserializes a public key from `bytes`. `bytes` MUST have length `Self::SERIALIZED_LEN`.
-                ///
-                /// # Panics
-                /// Panics if `bytes.len() != Self::SERIALIZED_LEN`.
-                pub fn from_bytes(bytes: &[u8]) -> Self {
+                /// Deserializes a public key from `bytes`, of length `Self::SERIALIZED_LEN`
+                pub fn from_bytes(bytes: &[u8; Self::SERIALIZED_LEN]) -> Self {
                     Self(KemPublicKey::from_bytes(bytes))
                 }
             }
