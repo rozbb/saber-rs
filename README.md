@@ -71,8 +71,7 @@ let ct_bytes = ct.as_ref();
 
 // Deserializing is also straightforward
 assert_eq!(ct_bytes.len(), LightsaberCiphertext::LEN);
-let mut receiver_ct = LightsaberCiphertext::default();
-receiver_ct.as_mut().copy_from_slice(ct_bytes);
+let receiver_ct = LightsaberCiphertext::from_bytes(ct_bytes.try_into().unwrap());
 
 // Use the secret key to decapsulate the ciphertext
 let ss2 = sk.decapsulate(&receiver_ct).unwrap();

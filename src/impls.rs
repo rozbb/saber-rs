@@ -48,13 +48,24 @@ macro_rules! variant_impl {
             pub struct $pubkey_name(KemPublicKey<$variant_ell>);
 
             /// A ciphertext, or "encapsulated key"", for this KEM. This is a thin wrapper around
-            /// a fixed-size byte array.
+            /// a byte array of length `Self::LEN`.
             #[derive(Clone)]
             pub struct $ciphertext_name([u8; ciphertext_len::<$variant_ell, $variant_modt_bits>()]);
+
+            impl AsRef<[u8]> for $ciphertext_name {
+                fn as_ref(&self) -> &[u8] {
+                    &self.0
+                }
+            }
 
             impl $ciphertext_name {
                 /// The length of the ciphertext, which is a byte array
                 pub const LEN: usize = ciphertext_len::<$variant_ell, $variant_modt_bits>();
+
+                /// Deserializes ciphertext from `bytes`, of length `Self::LEN`
+                pub fn from_bytes(bytes: [u8; Self::LEN]) -> Self {
+                    $ciphertext_name(bytes)
+                }
             }
 
             impl $privkey_name {
@@ -97,24 +108,6 @@ macro_rules! variant_impl {
                 }
             }
 
-            impl Default for $ciphertext_name {
-                fn default() -> Self {
-                    $ciphertext_name([0u8; ciphertext_len::<$variant_ell, $variant_modt_bits>()])
-                }
-            }
-
-            impl AsRef<[u8]> for $ciphertext_name {
-                fn as_ref(&self) -> &[u8] {
-                    &self.0
-                }
-            }
-
-            impl AsMut<[u8]> for $ciphertext_name {
-                fn as_mut(&mut self) -> &mut [u8] {
-                    &mut self.0
-                }
-            }
-
             impl Encapsulate<$ciphertext_name, SharedSecret> for $pubkey_name {
                 /// Encapsulation cannot fail
                 type Error = Infallible;
@@ -124,14 +117,17 @@ macro_rules! variant_impl {
                     &self,
                     rng: &mut impl CryptoRngCore,
                 ) -> Result<($ciphertext_name, SharedSecret), Infallible> {
-                    let mut ciphertext = $ciphertext_name::default();
-                    let shared_secret = crate::kem::encap::<
-                        $variant_ell,
-                        $variant_mu,
-                        $variant_modt_bits,
-                    >(rng, &self.0, &mut ciphertext.0);
+                    let mut ct = [0u8; ciphertext_len::<$variant_ell, $variant_modt_bits>()];
 
-                    Ok((ciphertext, SharedSecret(shared_secret)))
+                    let shared_secret =
+                        crate::kem::encap::<$variant_ell, $variant_mu, $variant_modt_bits>(
+                            rng, &self.0, &mut ct,
+                        );
+
+                    Ok((
+                        $ciphertext_name::from_bytes(ct),
+                        SharedSecret(shared_secret),
+                    ))
                 }
             }
 
@@ -173,8 +169,8 @@ macro_rules! variant_impl {
                 let (ct, ss1) = pk.encapsulate(&mut rng).unwrap();
                 let ct_bytes = ct.as_ref();
 
-                let mut receiver_ct = $ciphertext_name::default();
-                receiver_ct.as_mut().copy_from_slice(ct_bytes);
+                let ct_arr = ct_bytes.try_into().unwrap();
+                let receiver_ct = $ciphertext_name::from_bytes(ct_arr);
                 let ss2 = sk.decapsulate(&receiver_ct).unwrap();
 
                 assert_eq!(ss1.as_bytes(), ss2.as_bytes());
