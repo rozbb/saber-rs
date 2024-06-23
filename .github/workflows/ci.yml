@@ -52,5 +52,4 @@ jobs:
       - name: no_std / no feat
         run: cargo build --target thumbv7em-none-eabi --release --no-default-features
       - name: no_std / cargo hack
-        run: cargo hack
-        build --target thumbv7em-none-eabi --release --each-feature --exclude-features default,std
+        run: cargo hack build --target thumbv7em-none-eabi --release --each-feature --exclude-features default,std
