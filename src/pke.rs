@@ -64,7 +64,7 @@ impl<const L: usize> PkePublicKey<L> {
         let (vec_bytes, seed) = bytes.split_at(Self::SERIALIZED_LEN - 32);
         let vec = Matrix::from_bytes(vec_bytes, MODULUS_P_BITS);
         Self {
-            seed: seed.try_into().unwrap(),
+            seed: seed.try_into().expect("split_at(N-32).1 has len 32"),
             vec,
         }
     }
