@@ -239,13 +239,14 @@ mod test {
 
     fn test_encap_decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>() {
         let mut rng = rand::thread_rng();
+        let mut backing_buf = [0u8; max_ciphertext_len()];
 
         for _ in 0..100 {
             let sk = KemSecretKey::<L>::generate::<MU>(&mut rng);
             let pk = sk.public_key();
-            let mut ct_buf = vec![0u8; ciphertext_len::<L, MODULUS_T_BITS>()];
+            let ct_buf = &mut backing_buf[..ciphertext_len::<L, MODULUS_T_BITS>()];
 
-            let ss1 = encap::<L, MU, MODULUS_T_BITS>(&mut rng, pk, &mut ct_buf);
+            let ss1 = encap::<L, MU, MODULUS_T_BITS>(&mut rng, pk, ct_buf);
             let ss2 = decap::<L, MU, MODULUS_T_BITS>(&sk, &ct_buf);
             assert_eq!(ss1, ss2);
 

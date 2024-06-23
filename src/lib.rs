@@ -1,9 +1,5 @@
 #![no_std]
 
-#[cfg(test)]
-#[macro_use]
-extern crate std;
-
 mod consts;
 mod gen;
 mod impls;
