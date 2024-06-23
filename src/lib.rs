@@ -1,7 +1,7 @@
 #![no_std]
 #![forbid(unsafe_code)]
 #![warn(
-    clippy::unwrap_used, TODO: needs addressing
+    clippy::unwrap_used,
     missing_docs,
     rust_2018_idioms,
     unused_lifetimes,
