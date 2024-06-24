@@ -169,7 +169,7 @@ pub(crate) fn encap_deterministic<const L: usize, const MU: usize, const MODULUS
         .expect("[u8; 64].split_at(32).1 is 32-bytes long");
 
     // ct = Saber.PKE.Enc_pk(m; r)
-    pke::encrypt_deterministic::<L, MU, MODULUS_T_BITS>(kem_pk, &m, &r, out_buf);
+    pke::encrypt_deterministic::<L, MU, MODULUS_T_BITS>(kem_pk, m, &r, out_buf);
 
     // r' = SHA3-256(ct)
     let rprime = Sha3_256::digest(out_buf);
