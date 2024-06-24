@@ -117,18 +117,30 @@ impl<const L: usize> KemSecretKey<L> {
 // Algorithm 21, Saber.KEM.Encaps
 /// Encapsulate a shared secret to the given public key. Returns the shared secret.
 /// `out_buf` MUST have length `ciphertext_len::<L>()`.
-pub fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
+pub(crate) fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
     rng: &mut impl CryptoRngCore,
+    kem_pk: &KemPublicKey<L>,
+    out_buf: &mut [u8],
+) -> SharedSecret {
+    // Before using the message, we need to hash it
+    let mut m_unhashed = [0u8; 32];
+    rng.fill_bytes(&mut m_unhashed);
+    let m = Sha3_256::digest(m_unhashed).into();
+
+    encap_deterministic::<L, MU, MODULUS_T_BITS>(&m, kem_pk, out_buf)
+}
+
+// Algorithm 21, Saber.KEM.Encaps (cont.)
+/// Encapsulate a shared secret to the given public key. Uses the given message `m` as the data
+/// being encrypted to `kem_pk` Returns the shared secret. `out_buf` MUST have length
+/// `ciphertext_len::<L>()`.
+pub(crate) fn encap_deterministic<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
+    m: &[u8; 32],
     kem_pk: &KemPublicKey<L>,
     out_buf: &mut [u8],
 ) -> SharedSecret {
     // The PKE public key is the same as the KEM public key
     let pke_pk = kem_pk;
-
-    // Before using the message, we need to hash it
-    let mut m_unhashed = [0u8; 32];
-    rng.fill_bytes(&mut m_unhashed);
-    let m = Sha3_256::digest(m_unhashed).into();
 
     // Hash the public key
     let hash_pke_pk = {
@@ -234,10 +246,20 @@ mod test {
     use super::*;
     use crate::consts::*;
 
+    use rand::Rng;
+
     #[test]
-    fn kem() {
+    fn lightsaber_cca_kem() {
         test_encap_decap::<LIGHTSABER_L, LIGHTSABER_MU, LIGHTSABER_MODULUS_T_BITS>();
+    }
+
+    #[test]
+    fn saber_cca_kem() {
         test_encap_decap::<SABER_L, SABER_MU, SABER_MODULUS_T_BITS>();
+    }
+
+    #[test]
+    fn firesaber_cca_kem() {
         test_encap_decap::<FIRESABER_L, FIRESABER_MU, FIRESABER_MODULUS_T_BITS>();
     }
 
@@ -250,14 +272,73 @@ mod test {
             let pk = sk.public_key();
             let ct_buf = &mut backing_buf[..ciphertext_len::<L, MODULUS_T_BITS>()];
 
-            let ss1 = encap::<L, MU, MODULUS_T_BITS>(&mut rng, pk, ct_buf);
+            let m: [u8; 32] = rng.gen();
+            let ss1 = encap_deterministic::<L, MU, MODULUS_T_BITS>(&m, pk, ct_buf);
             let ss2 = decap::<L, MU, MODULUS_T_BITS>(&sk, &ct_buf);
             assert_eq!(ss1, ss2);
 
-            // Check that decapping a different ciphertext yields garbage
-            ct_buf[0] ^= 0x01;
-            let ss3 = decap::<L, MU, MODULUS_T_BITS>(&sk, &ct_buf);
-            assert_ne!(ss2, ss3);
+            // Check that the Fujisaki-Okamoto transform was implemented properly. That is, a
+            // perturbed ciphertext should yield a secret key that is totally unguessable to the
+            // encapsulator
+            let perturbed_ct = ct_buf;
+            // XOR the ciphertext with a random (nonzero) byte in a random location
+            let idx = (rng.gen::<u32>() as usize) % perturbed_ct.len();
+            let byte = loop {
+                let b = rng.gen::<u8>();
+                if b != 0 {
+                    break b;
+                }
+            };
+            perturbed_ct[idx] ^= byte;
+            // Decapsulate the perturbed ciphertext
+            let ss1 = decap::<L, MU, MODULUS_T_BITS>(&sk, &perturbed_ct);
+            // Try to guess what the decapsulation would be. This is the value that it would be if
+            // we messed up the F-O transform and accidentally returned SHA3-256(k || r')
+            // regardless of whether the equality check succeeded
+            let ss2 = recompute_shared_secret_for_pertrubed_ciphertext::<L, MU, MODULUS_T_BITS>(
+                &m,
+                pk,
+                &perturbed_ct,
+            );
+            assert_ne!(ss1, ss2);
         }
+    }
+
+    /// Model an adversary who has encapsulated a value to a given public key and has perturbed the
+    /// ciphertext a little. If Fujisaki-Okamoto is not implemented, they are able to recalculate
+    /// the new shared secret without knowledge of the secret key
+    pub(crate) fn recompute_shared_secret_for_pertrubed_ciphertext<
+        const L: usize,
+        const MU: usize,
+        const MODULUS_T_BITS: usize,
+    >(
+        m: &[u8; 32],
+        kem_pk: &KemPublicKey<L>,
+        ct: &[u8],
+    ) -> SharedSecret {
+        // Do all calculations as before
+        let pke_pk = kem_pk;
+        let hash_pke_pk = {
+            // Serialize the pubkey into a buffer of the appropriate size
+            let mut buf = [0u8; max_pke_pubkey_serialized_len()];
+            let pk_bytes = &mut buf[..PkePublicKey::<L>::SERIALIZED_LEN];
+            pke_pk.to_bytes(pk_bytes);
+            Sha3_256::digest(pk_bytes)
+        };
+        let kr = sha3::Sha3_512::new()
+            .chain_update(m)
+            .chain_update(hash_pke_pk)
+            .finalize();
+        let (k, _) = kr.split_at(32);
+
+        // Only difference: use the given ciphertext to derive r'
+        let rprime = Sha3_256::digest(ct);
+
+        // Return SHA3-256(k || r')
+        Sha3_256::new()
+            .chain_update(k)
+            .chain_update(rprime)
+            .finalize()
+            .into()
     }
 }
