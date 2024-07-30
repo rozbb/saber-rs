@@ -225,10 +225,7 @@ pub fn decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
 
     // k_or_z = k if reconstruction matched, else z. We do this in constant time using `subtle`
     let reconstruction_matched = reconstructed_ct.ct_eq(ciphertext);
-    let mut k_or_z = [0u8; 32];
-    for ((z_byte, k_byte), k_or_z_byte) in sk.z.iter().zip(k.iter()).zip(k_or_z.iter_mut()) {
-        *k_or_z_byte = u8::conditional_select(z_byte, k_byte, reconstruction_matched);
-    }
+    let k_or_z = <[u8; 32]>::conditional_select(&sk.z, &k, reconstruction_matched);
 
     // session key = SHA3-256(k_or_z || r')
     // The spec has the hash input order switched, but we're following the reference impl
