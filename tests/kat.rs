@@ -2,7 +2,6 @@
 
 use std::{string::String, vec::Vec};
 
-use kem::{Decapsulate, Encapsulate};
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -137,10 +136,10 @@ macro_rules! variant_kat {
                 pk.to_bytes(&mut pk_buf);
                 assert_eq!(pk_buf, tv.pk.as_slice(), "public keys do not match");
 
-                let (ct, ss1) = pk.encapsulate(&mut rng).unwrap();
+                let (ct, ss1) = pk.encapsulate(&mut rng);
                 assert_eq!(ct.as_ref(), tv.ct, "ciphertexts do no match");
 
-                let ss2 = sk.decapsulate(&ct).unwrap();
+                let ss2 = sk.decapsulate(&ct);
                 assert_eq!(ss1.as_bytes(), ss2.as_bytes());
                 assert_eq!(
                     ss1.as_bytes(),

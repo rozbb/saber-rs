@@ -17,5 +17,4 @@ mod kem;
 mod pke;
 mod ser;
 
-pub extern crate kem as kem_traits;
 pub use impls::*;
