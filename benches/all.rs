@@ -1,8 +1,5 @@
 use saber_kem::{
-    firesaber::FiresaberSecretKey,
-    kem_traits::{Decapsulate, Encapsulate},
-    lightsaber::LightsaberSecretKey,
-    saber::SaberSecretKey,
+    firesaber::FiresaberSecretKey, lightsaber::LightsaberSecretKey, saber::SaberSecretKey,
 };
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -21,7 +18,7 @@ macro_rules! bench_variant {
 
             let encap_bench_name = format!("{}-encap", stringify!($bench_name));
             c.bench_function(&encap_bench_name, |b| b.iter(|| pk.encapsulate(&mut rng)));
-            let (ct, _) = pk.encapsulate(&mut rng).unwrap();
+            let (ct, _) = pk.encapsulate(&mut rng);
 
             let decap_bench_name = format!("{}-decap", stringify!($bench_name));
             c.bench_function(&decap_bench_name, |b| b.iter(|| sk.decapsulate(&ct)));
