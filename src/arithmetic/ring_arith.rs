@@ -15,7 +15,9 @@ const KARATSUBA_THRESHOLD: usize = 128;
 
 /// An element of the ring (Z/2^13 Z)[X] / (X^256 + 1)
 // The coefficients are in order of ascending powers, i.e., `self.0[0]` is the constant term
-#[derive(Eq, PartialEq, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
+// Auto-derive strict equality for tests. Equality mod q is implemented in ring_eqv in tests below
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub struct RingElem(pub(crate) [u16; RING_DEG]);
 
 impl Default for RingElem {
@@ -85,7 +87,8 @@ impl<'a> Mul for &'a RingElem {
 
     // School book multiplication
     fn mul(self, other: &'a RingElem) -> Self::Output {
-        karatsuba_mul_helper(&self.0, &other.0)
+        //karatsuba_mul_helper(&self.0, &other.0)
+        toom_cook_4way(&self.0, &other.0)
         // Replace the above line with the below line to remove Karatsuba optimization
         //schoolbook_mul_helper(&self.0, &other.0)
     }
@@ -143,7 +146,7 @@ fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     let n = p.len();
 
     // Eventually, we have few enough terms that we should just do schoolbook multiplication
-    if n == KARATSUBA_THRESHOLD {
+    if n <= KARATSUBA_THRESHOLD {
         let mut ret = RingElem::default();
         // p and q are low-deg enough that there is no wrapping around the ring degree (256)
         for (i, p_coeff) in p.iter().enumerate() {
@@ -181,35 +184,6 @@ fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     poly_add(&poly_add(&z0.0, &z1.0).0, &z2.0)
 }
 
-/* Commenting out for now. This works just fine, but it's slower than karatsuba
-/// Does schoolbook multiplication of two ring elements
-fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
-    let mut result = RingElem::default();
-    // Do all the multiplications
-    for (i, p_coeff) in p.iter().enumerate() {
-        let mut q_iter = q.iter().enumerate();
-
-        // Do multiplications up until i+j == RING_DEG
-        for _ in 0..(RING_DEG - i) {
-            let (j, q_coeff) = q_iter.next().expect("there are RING_DEG elems in q_iter");
-            let idx = i + j;
-            let prod = p_coeff.wrapping_mul(*q_coeff);
-            result.0[idx] = result.0[idx].wrapping_add(prod);
-        }
-
-        // Once we're past the ring degree, wrap around and multiply by -1. This is
-        // because the ring is Z[X]/(X^256 + 1), so X^256 = -1
-        for (j, q_coeff) in q_iter {
-            let idx = i + j - RING_DEG;
-            let prod = p[i].wrapping_mul(*q_coeff);
-            result.0[idx] = result.0[idx].wrapping_sub(prod);
-        }
-    }
-
-    result
-}
-*/
-
 impl<'a> Add for &'a RingElem {
     type Output = RingElem;
 
@@ -226,12 +200,203 @@ impl<'a> Sub for &'a RingElem {
     }
 }
 
+const N_SB: usize = RING_DEG / 4;
+const N_SB_RES: usize = 2 * N_SB - 1;
+
+#[allow(non_snake_case)]
+fn toom_cook_4way(a1: &[u16], b1: &[u16]) -> RingElem {
+    let inv3: u32 = 43691;
+    let inv9: u32 = 36409;
+    let inv15: u32 = 61167;
+
+    let mut aw1 = [0u16; N_SB];
+    let mut aw2 = [0u16; N_SB];
+    let mut aw3 = [0u16; N_SB];
+    let mut aw4 = [0u16; N_SB];
+    let mut aw5 = [0u16; N_SB];
+    let mut aw6 = [0u16; N_SB];
+    let mut aw7 = [0u16; N_SB];
+
+    let mut bw1 = [0u16; N_SB];
+    let mut bw2 = [0u16; N_SB];
+    let mut bw3 = [0u16; N_SB];
+    let mut bw4 = [0u16; N_SB];
+    let mut bw5 = [0u16; N_SB];
+    let mut bw6 = [0u16; N_SB];
+    let mut bw7 = [0u16; N_SB];
+
+    let mut r0;
+    let mut r1;
+    let mut r2;
+    let mut r3;
+    let mut r4;
+    let mut r5;
+    let mut r6;
+    let mut r7;
+
+    let (A0, rest) = a1.split_at(N_SB);
+    let (A1, rest) = rest.split_at(N_SB);
+    let (A2, rest) = rest.split_at(N_SB);
+    let (A3, rest) = rest.split_at(N_SB);
+    assert!(rest.is_empty());
+
+    let (B0, rest) = b1.split_at(N_SB);
+    let (B1, rest) = rest.split_at(N_SB);
+    let (B2, rest) = rest.split_at(N_SB);
+    let (B3, rest) = rest.split_at(N_SB);
+    assert!(rest.is_empty());
+
+    let mut C = [0u16; 2 * RING_DEG];
+
+    // EVALUATION
+    for j in 0..N_SB {
+        r0 = A0[j];
+        r1 = A1[j];
+        r2 = A2[j];
+        r3 = A3[j];
+        r4 = r0.wrapping_add(r2);
+        r5 = r1.wrapping_add(r3);
+        r6 = r4.wrapping_add(r5);
+        r7 = r4.wrapping_sub(r5);
+        aw3[j] = r6;
+        aw4[j] = r7;
+        r4 = (r0 << 2).wrapping_add(r2) << 1;
+        r5 = (r1 << 2).wrapping_add(r3);
+        r6 = r4.wrapping_add(r5);
+        r7 = r4.wrapping_sub(r5);
+        aw5[j] = r6;
+        aw6[j] = r7;
+        r4 = (r3 << 3)
+            .wrapping_add(r2 << 2)
+            .wrapping_add(r1 << 1)
+            .wrapping_add(r0);
+        aw2[j] = r4;
+        aw7[j] = r0;
+        aw1[j] = r3;
+    }
+
+    for j in 0..N_SB {
+        r0 = B0[j];
+        r1 = B1[j];
+        r2 = B2[j];
+        r3 = B3[j];
+        r4 = r0.wrapping_add(r2);
+        r5 = r1.wrapping_add(r3);
+        r6 = r4.wrapping_add(r5);
+        r7 = r4.wrapping_sub(r5);
+        bw3[j] = r6;
+        bw4[j] = r7;
+        r4 = (r0 << 2).wrapping_add(r2) << 1;
+        r5 = (r1 << 2).wrapping_add(r3);
+        r6 = r4.wrapping_add(r5);
+        r7 = r4.wrapping_sub(r5);
+        bw5[j] = r6;
+        bw6[j] = r7;
+        r4 = (r3 << 3)
+            .wrapping_add(r2 << 2)
+            .wrapping_add(r1 << 1)
+            .wrapping_add(r0);
+        bw2[j] = r4;
+        bw7[j] = r0;
+        bw1[j] = r3;
+    }
+
+    // MULTIPLICATION
+
+    let w1 = karatsuba_mul_helper(&aw1, &bw1).0;
+    let w2 = karatsuba_mul_helper(&aw2, &bw2).0;
+    let w3 = karatsuba_mul_helper(&aw3, &bw3).0;
+    let w4 = karatsuba_mul_helper(&aw4, &bw4).0;
+    let w5 = karatsuba_mul_helper(&aw5, &bw5).0;
+    let w6 = karatsuba_mul_helper(&aw6, &bw6).0;
+    let w7 = karatsuba_mul_helper(&aw7, &bw7).0;
+
+    // INTERPOLATION
+    for i in 0..N_SB_RES {
+        r0 = w1[i];
+        r1 = w2[i];
+        r2 = w3[i];
+        r3 = w4[i];
+        r4 = w5[i];
+        r5 = w6[i];
+        r6 = w7[i];
+
+        r1 = r1.wrapping_add(r4);
+        r5 = r5.wrapping_sub(r4);
+        r3 = r3.wrapping_sub(r2) >> 1;
+        r4 = r4.wrapping_sub(r0);
+        r4 = r4.wrapping_sub(r6 << 6);
+        r4 = (r4 << 1).wrapping_add(r5);
+        r2 = r2.wrapping_add(r3);
+        r1 = r1.wrapping_sub(r2 << 6).wrapping_sub(r2);
+        r2 = r2.wrapping_sub(r6);
+        r2 = r2.wrapping_sub(r0);
+        r1 = r1.wrapping_add(45u16.wrapping_mul(r2));
+        r4 = ((r4.wrapping_sub(r2 << 3) as u32).wrapping_mul(inv3) >> 3) as u16;
+        r5 = r5.wrapping_add(r1);
+        r1 = ((r1.wrapping_add(r3 << 4) as u32).wrapping_mul(inv9) >> 1) as u16;
+        r3 = 0u16.wrapping_sub(r3.wrapping_add(r1));
+        r5 = ((30u16.wrapping_mul(r1).wrapping_sub(r5) as u32).wrapping_mul(inv15) >> 2) as u16;
+        r2 = r2.wrapping_sub(r4);
+        r1 = r1.wrapping_sub(r5);
+
+        C[i] = C[i].wrapping_add(r6);
+        C[i + 64] = C[i + 64].wrapping_add(r5);
+        C[i + 128] = C[i + 128].wrapping_add(r4);
+        C[i + 192] = C[i + 192].wrapping_add(r3);
+        C[i + 256] = C[i + 256].wrapping_add(r2);
+        C[i + 320] = C[i + 320].wrapping_add(r1);
+        C[i + 384] = C[i + 384].wrapping_add(r0);
+    }
+
+    let mut res = [0u16; RING_DEG];
+    for i in RING_DEG..(2 * RING_DEG) {
+        res[i - RING_DEG] = res[i - RING_DEG].wrapping_add(C[i - RING_DEG].wrapping_sub(C[i]));
+    }
+
+    RingElem(res)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::consts::RING_DEG;
+    use crate::consts::{MODULUS_Q_BITS, RING_DEG};
 
     use rand::{thread_rng, Rng, RngCore};
+
+    /// Checks that two ring elements are equivalent mod q
+    fn ring_eqv(a: RingElem, b: RingElem) -> bool {
+        a.0.iter()
+            .zip(b.0.iter())
+            .all(|(aa, &bb)| aa.wrapping_sub(bb) % (1 << MODULUS_Q_BITS) == 0)
+    }
+
+    /// Does schoolbook multiplication of two ring elements
+    fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
+        let mut result = RingElem::default();
+        // Do all the multiplications
+        for (i, p_coeff) in p.iter().enumerate() {
+            let mut q_iter = q.iter().enumerate();
+
+            // Do multiplications up until i+j == RING_DEG
+            for _ in 0..(RING_DEG - i) {
+                let (j, q_coeff) = q_iter.next().expect("there are RING_DEG elems in q_iter");
+                let idx = i + j;
+                let prod = p_coeff.wrapping_mul(*q_coeff);
+                result.0[idx] = result.0[idx].wrapping_add(prod);
+            }
+
+            // Once we're past the ring degree, wrap around and multiply by -1. This is
+            // because the ring is Z[X]/(X^256 + 1), so X^256 = -1
+            for (j, q_coeff) in q_iter {
+                let idx = i + j - RING_DEG;
+                let prod = p[i].wrapping_mul(*q_coeff);
+                result.0[idx] = result.0[idx].wrapping_sub(prod);
+            }
+        }
+
+        result
+    }
 
     // Checks that a * b == b * a and a + b == b + a for ring elements a, b
     #[test]
@@ -253,19 +418,30 @@ mod test {
         }
     }
 
-    // Tests equivalence of karatsuba and schoolbook multiplication
+    // Chekcs that ring multiplication is the same as schoolbook multiplciation
     #[test]
-    fn karatsuba() {
+    fn mul_correctness() {
         let mut rng = thread_rng();
 
         for _ in 0..100 {
             let a = RingElem::rand(&mut rng);
             let b = RingElem::rand(&mut rng);
 
-            let kara_prod = karatsuba_mul_helper(&a.0, &b.0);
-            let schoolbook_prod = &a * &b;
+            assert!(ring_eqv(&a * &b, schoolbook_mul_helper(&a.0, &b.0)),);
+        }
+    }
 
-            assert_eq!(kara_prod, schoolbook_prod);
+    // Checks that ring multiplication distributes over addition
+    #[test]
+    fn distributivity() {
+        let mut rng = thread_rng();
+
+        for _ in 0..100 {
+            let a = RingElem::rand(&mut rng);
+            let b = RingElem::rand(&mut rng);
+            let c = RingElem::rand(&mut rng);
+
+            assert!(ring_eqv(&a * &(&b + &c), &(&a * &b) + &(&a * &c)));
         }
     }
 

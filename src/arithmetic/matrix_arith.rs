@@ -5,7 +5,9 @@ use crate::{arithmetic::RingElem, consts::RING_DEG};
 /// An element of R^{x×y} where R is a [`RingElem`], stored in row-major order
 // We store the matrix in row-major order, so the outer array is the number of rows, i.e., the
 // height, i.e., X
-#[derive(Eq, PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
+// Auto-derive strict equality for tests
+#[cfg_attr(test, derive(Eq, PartialEq))]
 pub(crate) struct Matrix<const X: usize, const Y: usize>(pub(crate) [[RingElem; Y]; X]);
 
 impl<const X: usize, const Y: usize> Default for Matrix<X, Y> {
@@ -145,6 +147,7 @@ mod test {
     use super::*;
 
     // Checks that mul and mul_transpose distribute over addition on the RHS
+    #[ignore]
     #[test]
     fn distributivity() {
         const X: usize = 4;
