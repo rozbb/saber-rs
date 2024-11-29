@@ -146,8 +146,16 @@ impl<'a, const X: usize, const Y: usize> core::ops::Add<&'a Matrix<X, Y>> for &'
 mod test {
     use super::*;
 
+    use crate::arithmetic::test::ring_eqv;
+
+    /// Checks that two vectors are equivalent mod q
+    fn vec_eqv<const N: usize>(a: Matrix<N, 1>, b: Matrix<N, 1>) -> bool {
+        a.0.iter()
+            .zip(b.0.iter())
+            .all(|(aa, bb)| ring_eqv(aa[0], bb[0]))
+    }
+
     // Checks that mul and mul_transpose distribute over addition on the RHS
-    #[ignore]
     #[test]
     fn distributivity() {
         const X: usize = 4;
@@ -164,7 +172,7 @@ mod test {
             mat.mul_transpose(&vec_sum)
         };
         let prod2 = &mat.mul_transpose(&vec1) + &mat.mul_transpose(&vec2);
-        assert_eq!(prod1, prod2);
+        assert!(vec_eqv(prod1, prod2));
 
         // Now do the same with mul
         let vec1 = Matrix::<Y, 1>::rand(&mut rng);
@@ -174,7 +182,7 @@ mod test {
             mat.mul(&vec_sum)
         };
         let prod2 = &mat.mul(&vec1) + &mat.mul(&vec2);
-        assert_eq!(prod1, prod2);
+        assert!(vec_eqv(prod1, prod2));
     }
 
     // Checks that mul, mul_transpose, and transpose are consistent with each other

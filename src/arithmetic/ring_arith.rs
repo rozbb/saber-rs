@@ -8,11 +8,6 @@ use crate::{
 
 use core::ops::{Add, Mul, Sub};
 
-// The degree (-1) of a polynomial at which point we revert to schoolbook multiplication. On my
-// computer, 128 is the optimal choice. This is kinda odd because it means we only do
-// 1 round of Karatsbua mult.
-const KARATSUBA_THRESHOLD: usize = 128;
-
 /// An element of the ring (Z/2^13 Z)[X] / (X^256 + 1)
 // The coefficients are in order of ascending powers, i.e., `self.0[0]` is the constant term
 #[derive(Debug, Clone, Copy)]
@@ -94,69 +89,63 @@ impl<'a> Mul for &'a RingElem {
     }
 }
 
-/// Adds the two inputs, treating them as the lower coefficients of a RingElem
-fn poly_add(x: &[u16], y: &[u16]) -> RingElem {
-    let mut ret = RingElem::default();
-    let outlen = core::cmp::max(x.len(), y.len());
-    for i in 0..outlen {
-        let lhs = x.get(i).unwrap_or(&0);
-        let rhs = y.get(i).unwrap_or(&0);
-        ret.0[i] = lhs.wrapping_add(*rhs);
+fn arr_add<const N: usize>(x: &[u16; N], y: &[u16; N]) -> [u16; N] {
+    let mut ret = [0u16; N];
+    for i in 0..N {
+        ret[i] = x[i].wrapping_add(y[i]);
     }
     ret
 }
 
-/// Subtracts the two inputs, treating them as the lower coefficients of a RingElem
-fn poly_sub(x: &[u16], y: &[u16]) -> RingElem {
-    let mut ret = RingElem::default();
-    let outlen = core::cmp::max(x.len(), y.len());
-    for i in 0..outlen {
-        let lhs = x.get(i).unwrap_or(&0);
-        let rhs = y.get(i).unwrap_or(&0);
-        ret.0[i] = lhs.wrapping_sub(*rhs);
+fn arr_sub<const N: usize>(x: &[u16; N], y: &[u16; N]) -> [u16; N] {
+    let mut ret = [0u16; N];
+    for i in 0..N {
+        ret[i] = x[i].wrapping_sub(y[i]);
     }
     ret
 }
 
-/// Multiplies the given ring element by X^pow. In our representation, this means shifting the
-/// coefficients of p to the right, and multiplying by -1 when they wrap around
-fn mul_by_xpow(p: &RingElem, shift: usize) -> RingElem {
-    let mut ret = RingElem::default();
-    for i in 0..RING_DEG {
-        let idx = (i + shift) % RING_DEG;
-        // Have we wrapped around the ring degree and odd number of times?
-        let is_neg = ((i + shift) / RING_DEG) % 2 == 1;
+/// Multiplies a deg-62 polynomial by X^S, where S is at most 64
+fn mul63_by_xpow<const S: usize>(p: &[u16; 63]) -> [u16; 127] {
+    let mut ret = [0u16; 127];
+    for i in 0..63 {
+        ret[i + S] = ret[i + S].wrapping_add(p[i]);
+    }
+    ret
+}
 
-        // is_neg is a function of i and shift, and shift is determined by our level in the
-        // multiplication. So is_neg is a public value and therefore okay to branch on
-        if is_neg {
-            // If we've wrapped the ring degree an odd number of time, multiply by -1. This is
-            // because the ring is Z[X]/(X^256 + 1), so X^256 = -1
-            ret.0[idx] = ret.0[idx].wrapping_sub(p.0[i]);
-        } else {
-            ret.0[idx] = ret.0[idx].wrapping_add(p.0[i]);
+/// Schoolbook multiplication of degree-31 polynomials in little-endian order
+fn schoolbook32(p: &[u16; 32], q: &[u16; 32]) -> [u16; 63] {
+    let mut ret = [0u16; 63];
+    // p and q are low-deg enough that there is no wrapping around the ring degree (256)
+    for (i, p_coeff) in p.iter().enumerate() {
+        for (j, q_coeff) in q.iter().enumerate() {
+            let prod = p_coeff.wrapping_mul(*q_coeff);
+            ret[i + j] = ret[i + j].wrapping_add(prod);
         }
     }
-    ret
+    return ret;
 }
 
-/// Returns p*q as ring elements, using the Karatsuba algorithm. p and q MUST be the same length
-fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
-    assert_eq!(p.len(), q.len());
-    let n = p.len();
-
-    // Eventually, we have few enough terms that we should just do schoolbook multiplication
-    if n <= KARATSUBA_THRESHOLD {
-        let mut ret = RingElem::default();
-        // p and q are low-deg enough that there is no wrapping around the ring degree (256)
-        for (i, p_coeff) in p.iter().enumerate() {
-            for (j, q_coeff) in q.iter().enumerate() {
-                let prod = p_coeff.wrapping_mul(*q_coeff);
-                ret.0[i + j] = ret.0[i + j].wrapping_add(prod);
-            }
+/*
+/// Schoolbook multiplication of degree-63 polynomials in little-endian order
+fn schoolbook64(p: &[u16; 64], q: &[u16; 64]) -> [u16; 127] {
+    let mut result = [0u16; 127];
+    // Do all the multiplications
+    for (i, p_coeff) in p.iter().enumerate() {
+        for (j, q_coeff) in q.iter().enumerate() {
+            result[i + j] = result[i + j].wrapping_add(p_coeff.wrapping_mul(*q_coeff));
         }
-        return ret;
     }
+
+    result
+}
+*/
+
+/// Karatsuba multiplication of degree-63 polynomials in little-endian order
+fn karatsuba64(p: &[u16; 64], q: &[u16; 64]) -> [u16; 127] {
+    const MID: usize = 32;
+    const N: usize = 64;
 
     // If you want to follow along, I used page 4 of these lecture notes
     //     https://cs.dartmouth.edu/~deepc/LecNotes/cs31/lec6.pdf
@@ -165,30 +154,31 @@ fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
     // the z_i notation comes from the Wikipedia page
 
     // Split the inputs into low and high halves
-    let mid = n / 2;
-    let pl = &p[..mid];
-    let ph = &p[mid..];
-    let ql = &q[..mid];
-    let qh = &q[mid..];
+    let pl: &[u16; MID] = &p[..MID].try_into().unwrap();
+    let ph: &[u16; MID] = &p[MID..].try_into().unwrap();
+    let ql: &[u16; MID] = &q[..MID].try_into().unwrap();
+    let qh: &[u16; MID] = &q[MID..].try_into().unwrap();
 
-    // Compute our intermediate products recursively
-    let z0 = karatsuba_mul_helper(pl, ql);
-    let z2 = karatsuba_mul_helper(ph, qh);
-    let z3 = karatsuba_mul_helper(&poly_add(pl, ph).0[..mid], &poly_add(ql, qh).0[..mid]);
-    let z1 = poly_sub(&poly_sub(&z3.0, &z2.0).0, &z0.0);
+    // Compute our intermediate products
+    let z0 = schoolbook32(pl, ql);
+    let z2 = schoolbook32(ph, qh);
+    let z3 = schoolbook32(&arr_add(pl, ph), &arr_add(ql, qh));
+    let z1 = arr_sub(&arr_sub(&z3, &z2), &z0);
 
     // Compute z0 + z1*X^mid + z2*X^(2mid)
-    let z1 = mul_by_xpow(&z1, mid);
-    let z2 = mul_by_xpow(&z2, 2 * mid);
+    let z1 = mul63_by_xpow::<MID>(&z1);
+    let z2 = mul63_by_xpow::<N>(&z2);
 
-    poly_add(&poly_add(&z0.0, &z1.0).0, &z2.0)
+    let mut padded_z0 = [0u16; 127];
+    padded_z0[0..63].copy_from_slice(&z0);
+    arr_add(&arr_add(&padded_z0, &z1), &z2)
 }
 
 impl<'a> Add for &'a RingElem {
     type Output = RingElem;
 
     fn add(self, other: &'a RingElem) -> Self::Output {
-        poly_add(&self.0, &other.0)
+        RingElem(arr_add(&self.0, &other.0))
     }
 }
 
@@ -196,7 +186,7 @@ impl<'a> Sub for &'a RingElem {
     type Output = RingElem;
 
     fn sub(self, other: &'a RingElem) -> Self::Output {
-        poly_sub(&self.0, &other.0)
+        RingElem(arr_sub(&self.0, &other.0))
     }
 }
 
@@ -303,13 +293,23 @@ fn toom_cook_4way(a1: &[u16], b1: &[u16]) -> RingElem {
 
     // MULTIPLICATION
 
-    let w1 = karatsuba_mul_helper(&aw1, &bw1).0;
-    let w2 = karatsuba_mul_helper(&aw2, &bw2).0;
-    let w3 = karatsuba_mul_helper(&aw3, &bw3).0;
-    let w4 = karatsuba_mul_helper(&aw4, &bw4).0;
-    let w5 = karatsuba_mul_helper(&aw5, &bw5).0;
-    let w6 = karatsuba_mul_helper(&aw6, &bw6).0;
-    let w7 = karatsuba_mul_helper(&aw7, &bw7).0;
+    /*
+    let w1 = schoolbook64(&aw1, &bw1);
+    let w2 = schoolbook64(&aw2, &bw2);
+    let w3 = schoolbook64(&aw3, &bw3);
+    let w4 = schoolbook64(&aw4, &bw4);
+    let w5 = schoolbook64(&aw5, &bw5);
+    let w6 = schoolbook64(&aw6, &bw6);
+    let w7 = schoolbook64(&aw7, &bw7);
+    */
+
+    let w1 = karatsuba64(&aw1, &bw1);
+    let w2 = karatsuba64(&aw2, &bw2);
+    let w3 = karatsuba64(&aw3, &bw3);
+    let w4 = karatsuba64(&aw4, &bw4);
+    let w5 = karatsuba64(&aw5, &bw5);
+    let w6 = karatsuba64(&aw6, &bw6);
+    let w7 = karatsuba64(&aw7, &bw7);
 
     // INTERPOLATION
     for i in 0..N_SB_RES {
@@ -358,14 +358,14 @@ fn toom_cook_4way(a1: &[u16], b1: &[u16]) -> RingElem {
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use super::*;
     use crate::consts::{MODULUS_Q_BITS, RING_DEG};
 
     use rand::{thread_rng, Rng, RngCore};
 
     /// Checks that two ring elements are equivalent mod q
-    fn ring_eqv(a: RingElem, b: RingElem) -> bool {
+    pub(crate) fn ring_eqv(a: RingElem, b: RingElem) -> bool {
         a.0.iter()
             .zip(b.0.iter())
             .all(|(aa, &bb)| aa.wrapping_sub(bb) % (1 << MODULUS_Q_BITS) == 0)
