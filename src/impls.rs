@@ -76,7 +76,7 @@ macro_rules! variant_impl {
 
                 /// Returns the public key corresponding to this secret key
                 pub fn public_key(&self) -> $pubkey_name {
-                    $pubkey_name(self.0.public_key().clone())
+                    $pubkey_name(self.0.public_key())
                 }
             }
 

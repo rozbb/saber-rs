@@ -10,7 +10,33 @@ use sha3::{digest::Digest, Sha3_256};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
 /// A public key for the IND-CCA-secure Saber KEM scheme
-pub type KemPublicKey<const L: usize> = PkePublicKey<L>;
+pub struct KemPublicKey<const L: usize> {
+    /// The PKE public key that `cpa_sk` generated
+    pke_pk: PkePublicKey<L>,
+    /// The hash of `pke_pk`
+    hash_pke_pk: [u8; 32],
+}
+
+impl<const L: usize> KemPublicKey<L> {
+    pub(crate) const SERIALIZED_LEN: usize = PkePublicKey::<L>::SERIALIZED_LEN;
+
+    /// Serializes just `pke_pk`
+    pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
+        self.pke_pk.to_bytes(out_buf);
+    }
+
+    /// Deserializes from `pke_pk`, and recomputes `hash_pke_pk`
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Self {
+        let pke_pk = PkePublicKey::from_bytes(bytes);
+        // Recompute the hash
+        let hash_pke_pk = Sha3_256::digest(bytes).into();
+
+        KemPublicKey {
+            pke_pk,
+            hash_pke_pk,
+        }
+    }
+}
 
 /// The shared secret of a KEM operation
 pub type SharedSecret = [u8; 32];
@@ -23,7 +49,7 @@ pub struct KemSecretKey<const L: usize> {
     pke_sk: PkeSecretKey<L>,
     /// The PKE public key that `cpa_sk` generated
     pke_pk: PkePublicKey<L>,
-    /// The hash of `cpa_pk`
+    /// The hash of `pke_pk`
     hash_pke_pk: [u8; 32],
 }
 
@@ -109,8 +135,11 @@ impl<const L: usize> KemSecretKey<L> {
         }
     }
 
-    pub(crate) fn public_key(&self) -> &KemPublicKey<L> {
-        &self.pke_pk
+    pub(crate) fn public_key(&self) -> KemPublicKey<L> {
+        KemPublicKey {
+            pke_pk: self.pke_pk.clone(),
+            hash_pke_pk: self.hash_pke_pk,
+        }
     }
 }
 
@@ -139,17 +168,11 @@ pub(crate) fn encap_deterministic<const L: usize, const MU: usize, const MODULUS
     kem_pk: &KemPublicKey<L>,
     out_buf: &mut [u8],
 ) -> SharedSecret {
-    // The PKE public key is the same as the KEM public key
-    let pke_pk = kem_pk;
-
-    // Hash the public key
-    let hash_pke_pk = {
-        // Serialize the pubkey into a buffer of the appropriate size
-        let mut buf = [0u8; max_pke_pubkey_serialized_len()];
-        let pk_bytes = &mut buf[..PkePublicKey::<L>::SERIALIZED_LEN];
-        pke_pk.to_bytes(pk_bytes);
-        Sha3_256::digest(pk_bytes)
-    };
+    // Unpack the KEM pubkey
+    let KemPublicKey {
+        pke_pk,
+        hash_pke_pk,
+    } = kem_pk;
 
     // kr = SHA3-512(m || hash_pke_pk)
     // The spec has the hash input order switched, but we're following the reference impl
@@ -169,7 +192,7 @@ pub(crate) fn encap_deterministic<const L: usize, const MU: usize, const MODULUS
         .expect("[u8; 64].split_at(32).1 is 32-bytes long");
 
     // ct = Saber.PKE.Enc_pk(m; r)
-    pke::encrypt_deterministic::<L, MU, MODULUS_T_BITS>(kem_pk, m, &r, out_buf);
+    pke::encrypt_deterministic::<L, MU, MODULUS_T_BITS>(pke_pk, m, &r, out_buf);
 
     // r' = SHA3-256(ct)
     let rprime = Sha3_256::digest(out_buf);
@@ -270,7 +293,7 @@ mod test {
             let ct_buf = &mut backing_buf[..ciphertext_len::<L, MODULUS_T_BITS>()];
 
             let m: [u8; 32] = rng.gen();
-            let ss1 = encap_deterministic::<L, MU, MODULUS_T_BITS>(&m, pk, ct_buf);
+            let ss1 = encap_deterministic::<L, MU, MODULUS_T_BITS>(&m, &pk, ct_buf);
             let ss2 = decap::<L, MU, MODULUS_T_BITS>(&sk, &ct_buf);
             assert_eq!(ss1, ss2);
 
@@ -294,7 +317,7 @@ mod test {
             // regardless of whether the equality check succeeded
             let ss2 = recompute_shared_secret_for_pertrubed_ciphertext::<L, MU, MODULUS_T_BITS>(
                 &m,
-                pk,
+                &pk,
                 &perturbed_ct,
             );
             assert_ne!(ss1, ss2);
