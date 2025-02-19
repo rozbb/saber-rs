@@ -9,7 +9,7 @@ use crate::{
     ser::deserialize,
 };
 
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 use sha3::{digest::ExtendableOutput, Shake128};
 
 const H1_VAL: u16 = 1 << (MODULUS_Q_BITS - MODULUS_P_BITS - 1);
@@ -91,7 +91,7 @@ pub const fn ciphertext_len<const L: usize, const MODULUS_T_BITS: usize>() -> us
 // Algorithm 17, Saber.PKE.KeyGen
 /// Generates a keypair with a secret from R^ℓ with bionimal parameter μ
 pub(crate) fn gen_keypair<const L: usize, const MU: usize>(
-    rng: &mut impl CryptoRngCore,
+    rng: &mut impl CryptoRng,
 ) -> (PkeSecretKey<L>, PkePublicKey<L>) {
     let mut matrix_seed = [0u8; 32];
     let mut matrix_seed_unhashed = [0u8; 32];
@@ -213,7 +213,7 @@ mod test {
 
     // Helper function that encrypts and decrypts a random 32-byte message
     fn test_enc_dec<const L: usize, const MODULUS_T_BITS: usize, const MU: usize>() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut backing_buf =
             [0u8; MAX_MODULUS_T_BITS * RING_DEG / 8 + MAX_L * MODULUS_P_BITS * RING_DEG / 8];
 

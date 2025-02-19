@@ -16,7 +16,7 @@ impl<const X: usize, const Y: usize> Default for Matrix<X, Y> {
 
 impl<const X: usize, const Y: usize> Matrix<X, Y> {
     #[cfg(test)]
-    pub fn rand(rng: &mut impl rand_core::CryptoRngCore) -> Self {
+    pub fn rand(rng: &mut impl rand_core::CryptoRng) -> Self {
         let mut mat = Matrix::default();
         for i in 0..X {
             for j in 0..Y {
@@ -150,7 +150,7 @@ mod test {
         const X: usize = 4;
         const Y: usize = 7;
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         // Test mul_transpose
         let mat = Matrix::<X, Y>::rand(&mut rng);
@@ -182,7 +182,7 @@ mod test {
         const Y: usize = 7;
         const Z: usize = 13;
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         // Check that A^T B == (B^T A)^T
         let mat1 = Matrix::<X, Y>::rand(&mut rng);

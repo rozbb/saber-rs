@@ -7,7 +7,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 macro_rules! bench_variant {
     ($bench_name:ident, $privkey_name:ident) => {
         fn $bench_name(c: &mut Criterion) {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
 
             let gen_bench_name = format!("{}-gen-keypair", stringify!($bench_name));
             c.bench_function(&gen_bench_name, |b| {

@@ -8,20 +8,20 @@ keywords = ["cryptography", "crypto", "post-quantum", "encapsulation", "kem"]
 categories = ["cryptography", "no-std"]
 
 [dependencies]
-rand_core = "0.6.4"
-sha3 = { version = "0.10.8", default-features = false }
-subtle = { version = "2.6.0", default-features = false, features = [
+rand_core = "0.9"
+sha3 = { version = "0.10", default-features = false }
+subtle = { version = "2.6", default-features = false, features = [
     "const-generics",
 ] }
-zeroize = { version = "1.8.1", default-features = false, features = ["derive"] }
+zeroize = { version = "1", default-features = false, features = ["derive"] }
 
 [dev-dependencies]
-rand = "0.8.5"
-criterion = "0.3"
+rand = "0.9"
+criterion = "0.5"
 aes_ctr_drbg = "0.0.2"
-serde = { version = "1.0.203", features = ["derive"] }
-serde_json = "1.0.117"
-hex = "0.4.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
 
 [features]
 default = ["asm"]

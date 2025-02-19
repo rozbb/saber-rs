@@ -27,7 +27,7 @@ impl Default for RingElem {
 impl RingElem {
     /// Creates a random ring element
     #[cfg(test)]
-    pub(crate) fn rand(rng: &mut impl rand_core::CryptoRngCore) -> Self {
+    pub(crate) fn rand(rng: &mut impl rand_core::CryptoRng) -> Self {
         let modulus = 1 << crate::consts::MODULUS_Q_BITS as u32;
 
         let mut result = [0; RING_DEG];
@@ -231,12 +231,12 @@ mod test {
     use super::*;
     use crate::consts::RING_DEG;
 
-    use rand::{thread_rng, Rng, RngCore};
+    use rand::{rng, Rng, RngCore};
 
     // Checks that a * b == b * a and a + b == b + a for ring elements a, b
     #[test]
     fn commutativity() {
-        let mut rng = thread_rng();
+        let mut rng = rng();
 
         for _ in 0..100 {
             let a = RingElem::rand(&mut rng);
@@ -256,7 +256,7 @@ mod test {
     // Tests equivalence of karatsuba and schoolbook multiplication
     #[test]
     fn karatsuba() {
-        let mut rng = thread_rng();
+        let mut rng = rng();
 
         for _ in 0..100 {
             let a = RingElem::rand(&mut rng);
@@ -272,7 +272,7 @@ mod test {
     // Tests serialization and deserialization of ring elements
     #[test]
     fn from_bytes() {
-        let mut rng = thread_rng();
+        let mut rng = rng();
 
         // The largest buffer we'll need for the following tests. We make 2 because we need to
         // compare values in some places
@@ -327,7 +327,7 @@ mod test {
 
             // Pick a random bits_per_elem
             for _ in 0..10 {
-                let bits_per_elem = rng.gen_range(1..=13);
+                let bits_per_elem = rng.random_range(1..=13);
                 let bitmask = (1 << bits_per_elem) - 1;
 
                 // Generate a random element and make sure none of the values exceed 2^bits_per_elem

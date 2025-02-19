@@ -50,10 +50,6 @@ impl RngCore for KatRng {
     fn fill_bytes(&mut self, dest: &mut [u8]) {
         self.0.get_random(dest)
     }
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
-        self.fill_bytes(dest);
-        Ok(())
-    }
 
     fn next_u32(&mut self) -> u32 {
         unimplemented!()

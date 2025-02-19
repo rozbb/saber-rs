@@ -6,7 +6,7 @@ use crate::{
     pke::ciphertext_len,
 };
 
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// A shared secret of a KEM execution. This is just a `[u8; 32]` that zeroes itself from memory
@@ -60,7 +60,7 @@ macro_rules! variant_impl {
                 pub const SERIALIZED_LEN: usize = KemSecretKey::<$variant_ell>::SERIALIZED_LEN;
 
                 /// Generate a fresh secret key
-                pub fn generate(rng: &mut impl CryptoRngCore) -> Self {
+                pub fn generate(rng: &mut impl CryptoRng) -> Self {
                     Self(KemSecretKey::generate::<$variant_mu>(rng))
                 }
 
@@ -99,7 +99,7 @@ macro_rules! variant_impl {
                 /// Encapsulates a fresh shared secret
                 pub fn encapsulate(
                     &self,
-                    rng: &mut impl CryptoRngCore,
+                    rng: &mut impl CryptoRng,
                 ) -> ($ciphertext_name, SharedSecret) {
                     let mut ct = [0u8; $ciphertext_len_name];
                     let ss = self.encapsulate_in_place(rng, &mut ct);
@@ -112,7 +112,7 @@ macro_rules! variant_impl {
                 /// buffer
                 pub fn encapsulate_in_place(
                     &self,
-                    rng: &mut impl CryptoRngCore,
+                    rng: &mut impl CryptoRng,
                     ct_out: &mut $ciphertext_name,
                 ) -> SharedSecret {
                     let shared_secret =
@@ -140,7 +140,7 @@ macro_rules! variant_impl {
             /// Basic test that keygen, encap, decap, ser, and deser work
             #[test]
             fn test_api() {
-                let mut rng = rand::thread_rng();
+                let mut rng = rand::rng();
                 let sk = $privkey_name::generate(&mut rng);
                 let pk = sk.public_key();
 

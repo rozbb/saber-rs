@@ -5,7 +5,7 @@ use crate::pke::{
     PkeSecretKey,
 };
 
-use rand_core::CryptoRngCore;
+use rand_core::CryptoRng;
 use sha3::{digest::Digest, Sha3_256};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
@@ -59,7 +59,7 @@ impl<const L: usize> KemSecretKey<L> {
 
     // Algorithm 20, Saber.KEM.KeyGen
     /// Generate a fresh secret key
-    pub fn generate<const MU: usize>(rng: &mut impl CryptoRngCore) -> KemSecretKey<L> {
+    pub fn generate<const MU: usize>(rng: &mut impl CryptoRng) -> KemSecretKey<L> {
         let (pke_sk, pke_pk) = pke::gen_keypair::<L, MU>(rng);
 
         // Hash the public key
@@ -147,7 +147,7 @@ impl<const L: usize> KemSecretKey<L> {
 /// Encapsulate a shared secret to the given public key. Returns the shared secret.
 /// `out_buf` MUST have length `ciphertext_len::<L>()`.
 pub(crate) fn encap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>(
-    rng: &mut impl CryptoRngCore,
+    rng: &mut impl CryptoRng,
     kem_pk: &KemPublicKey<L>,
     out_buf: &mut [u8],
 ) -> SharedSecret {
@@ -284,7 +284,7 @@ mod test {
     }
 
     fn test_encap_decap<const L: usize, const MU: usize, const MODULUS_T_BITS: usize>() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut backing_buf = [0u8; max_ciphertext_len()];
 
         for _ in 0..100 {
@@ -292,7 +292,7 @@ mod test {
             let pk = sk.public_key();
             let ct_buf = &mut backing_buf[..ciphertext_len::<L, MODULUS_T_BITS>()];
 
-            let m: [u8; 32] = rng.gen();
+            let m: [u8; 32] = rng.random();
             let ss1 = encap_deterministic::<L, MU, MODULUS_T_BITS>(&m, &pk, ct_buf);
             let ss2 = decap::<L, MU, MODULUS_T_BITS>(&sk, &ct_buf);
             assert_eq!(ss1, ss2);
@@ -302,9 +302,9 @@ mod test {
             // encapsulator
             let perturbed_ct = ct_buf;
             // XOR the ciphertext with a random (nonzero) byte in a random location
-            let idx = (rng.gen::<u32>() as usize) % perturbed_ct.len();
+            let idx = (rng.random::<u32>() as usize) % perturbed_ct.len();
             let byte = loop {
-                let b = rng.gen::<u8>();
+                let b = rng.random::<u8>();
                 if b != 0 {
                     break b;
                 }

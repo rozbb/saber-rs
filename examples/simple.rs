@@ -3,7 +3,7 @@ use saber_kem::lightsaber::{
 };
 
 fn main() {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Generate a keypair
     let sk = LightsaberSecretKey::generate(&mut rng);
