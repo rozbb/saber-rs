@@ -55,9 +55,28 @@ pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
     Matrix([ring_elems]).transpose()
 }
 
+// Casts a K×K matrix to an L×L matrix
+fn upcast<const K: usize, const L: usize>(mat: Matrix<K, K>) -> Matrix<L, L> {
+    let mut out = Matrix::default();
+    for (a, b) in out.0.iter_mut().zip(mat.0) {
+        a.copy_from_slice(&b);
+    }
+
+    out
+}
+
 // Algorithm 15, GenMatrix
 /// Uses a random seed to generate a uniform matrix in R^{ℓ×ℓ}
 pub(crate) fn gen_matrix_from_seed<const L: usize>(seed: &[u8; 32]) -> Matrix<L, L> {
+    match L {
+        crate::consts::LIGHTSABER_L => upcast(crate::consts::LIGHTSABER_MAT),
+        crate::consts::SABER_L => upcast(crate::consts::SABER_MAT),
+        crate::consts::FIRESABER_L => upcast(crate::consts::FIRESABER_MAT),
+        _ => unimplemented!(),
+    }
+}
+
+pub(crate) fn old_gen_matrix_from_seed<const L: usize>(seed: &[u8; 32]) -> Matrix<L, L> {
     // Hash the seed and make an XOF
     let mut xof = {
         let mut h = Shake128::default();
@@ -81,4 +100,24 @@ pub(crate) fn gen_matrix_from_seed<const L: usize>(seed: &[u8; 32]) -> Matrix<L,
     }
 
     mat
+}
+
+#[test]
+fn print_matrices() {
+    use crate::consts::{FIRESABER_L, LIGHTSABER_L, SABER_L};
+
+    println!(
+        "Lightsaber mat is {:?}",
+        old_gen_matrix_from_seed::<LIGHTSABER_L>(&[0u8; 32])
+    );
+    println!("\n\n\n");
+    println!(
+        "Saber mat is {:?}",
+        old_gen_matrix_from_seed::<SABER_L>(&[1u8; 32])
+    );
+    println!("\n\n\n");
+    println!(
+        "Firesaber mat is {:?}",
+        old_gen_matrix_from_seed::<FIRESABER_L>(&[2u8; 32])
+    );
 }
