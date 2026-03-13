@@ -8,7 +8,7 @@ use crate::{
 
 use sha3::{
     digest::{ExtendableOutput, Update, XofReader},
-    Shake128,
+    Shake128, TurboShake128, TurboShake128Core,
 };
 
 // Algorithm 16, GenSecret
@@ -22,7 +22,7 @@ pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
 
     // Hash the seed and make an XOF
     let mut xof = {
-        let mut h = Shake128::default();
+        let mut h = TurboShake128::from_core(TurboShake128Core::new(0x1f));
         h.update(&seed[..]);
         h.finalize_xof()
     };

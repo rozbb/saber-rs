@@ -1,11 +1,13 @@
 use saber_kem::{
-    firesaber::FiresaberSecretKey, lightsaber::LightsaberSecretKey, saber::SaberSecretKey,
+    firesaber::{FiresaberPublicKey, FiresaberSecretKey},
+    lightsaber::{LightsaberPublicKey, LightsaberSecretKey},
+    saber::{SaberPublicKey, SaberSecretKey},
 };
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
 macro_rules! bench_variant {
-    ($bench_name:ident, $privkey_name:ident) => {
+    ($bench_name:ident, $privkey_name:ident, $pubkey_name:ident) => {
         fn $bench_name(c: &mut Criterion) {
             let mut rng = rand::rng();
 
@@ -15,6 +17,17 @@ macro_rules! bench_variant {
             });
             let sk = $privkey_name::generate(&mut rng);
             let pk = sk.public_key();
+            let pk_bytes = {
+                let mut buf = [0u8; $pubkey_name::SERIALIZED_LEN];
+                pk.to_bytes(&mut buf);
+                buf
+            };
+
+            let encap_bench_name = format!("{}-deser-pubkey", stringify!($bench_name));
+            c.bench_function(&encap_bench_name, |b| {
+                b.iter(|| $pubkey_name::from_bytes(&pk_bytes))
+            });
+            let (ct, _) = pk.encapsulate(&mut rng);
 
             let encap_bench_name = format!("{}-encap", stringify!($bench_name));
             c.bench_function(&encap_bench_name, |b| b.iter(|| pk.encapsulate(&mut rng)));
@@ -26,9 +39,9 @@ macro_rules! bench_variant {
     };
 }
 
-bench_variant!(lightsaber, LightsaberSecretKey);
-bench_variant!(saber, SaberSecretKey);
-bench_variant!(firesaber, FiresaberSecretKey);
+bench_variant!(lightsaber, LightsaberSecretKey, LightsaberPublicKey);
+bench_variant!(saber, SaberSecretKey, SaberPublicKey);
+bench_variant!(firesaber, FiresaberSecretKey, FiresaberPublicKey);
 
 criterion_group!(benches, lightsaber, saber, firesaber);
 criterion_main!(benches);

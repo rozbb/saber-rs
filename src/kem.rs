@@ -6,7 +6,10 @@ use crate::pke::{
 };
 
 use rand_core::CryptoRng;
-use sha3::{digest::Digest, Sha3_256};
+use sha3::{
+    digest::{Digest, ExtendableOutput, Update, XofReader},
+    Sha3_256, Shake128, TurboShake128, TurboShake128Core,
+};
 use subtle::{ConditionallySelectable, ConstantTimeEq};
 
 /// A public key for the IND-CCA-secure Saber KEM scheme
@@ -29,7 +32,14 @@ impl<const L: usize> KemPublicKey<L> {
     pub(crate) fn from_bytes(bytes: &[u8]) -> Self {
         let pke_pk = PkePublicKey::from_bytes(bytes);
         // Recompute the hash
-        let hash_pke_pk = Sha3_256::digest(bytes).into();
+        let hash_pke_pk = {
+            let mut h = TurboShake128::from_core(TurboShake128Core::new(0x1f));
+            let mut hash = [0u8; 32];
+            h.update(bytes);
+            let mut xof = h.finalize_xof();
+            xof.read(&mut hash);
+            hash
+        };
 
         KemPublicKey {
             pke_pk,
