@@ -3,7 +3,6 @@
 use crate::{
     arithmetic::{Matrix, RingElem},
     consts::{MAX_MU, MODULUS_Q_BITS, RING_DEG},
-    ser::deserialize,
 };
 
 use sha3::{
@@ -11,15 +10,61 @@ use sha3::{
     Shake128,
 };
 
+/// Computes the Centered Binomial Distribution directly from raw bytes.
+///
+/// Each ring coefficient is sampled from CBD(μ/2): take μ random bits, split into two halves
+/// of μ/2 bits each, and output popcount(first_half) - popcount(second_half).
+///
+/// For MU=8 (Saber), this is byte-aligned: each coefficient uses exactly 1 byte, with the
+/// low nibble as the positive half and the high nibble as the negative half.
+///
+/// For MU=6 (FireSaber) and MU=10 (LightSaber), we read MU bits at a time from the byte
+/// stream using bitwise extraction.
+fn cbd<const MU: usize>(buf: &[u8], out: &mut RingElem) {
+    let half = MU / 2;
+    let mask: u32 = (1 << half) - 1;
+
+    if MU == 8 {
+        // Specialized fast path for Saber (MU=8): each coefficient = one byte, no bit shifting
+        for (coeff, &byte) in out.0.iter_mut().zip(buf.iter()) {
+            let a = (byte & 0x0F).count_ones() as u16;
+            let b = (byte >> 4).count_ones() as u16;
+            *coeff = a.wrapping_sub(b);
+        }
+    } else {
+        // General path for MU=6 (FireSaber) and MU=10 (LightSaber).
+        // Read MU bits at a time, spanning up to 3 bytes when not byte-aligned.
+        let mut bit_pos = 0;
+        for coeff in out.0.iter_mut() {
+            let byte_idx = bit_pos / 8;
+            let bit_in_byte = bit_pos % 8;
+
+            // Read up to 3 bytes to cover MU bits starting at bit_in_byte.
+            // Worst case: MU=10 starting at bit 7 needs bits 7..16, spanning 3 bytes.
+            let mut raw: u32 = buf[byte_idx] as u32;
+            if byte_idx + 1 < buf.len() {
+                raw |= (buf[byte_idx + 1] as u32) << 8;
+            }
+            if byte_idx + 2 < buf.len() {
+                raw |= (buf[byte_idx + 2] as u32) << 16;
+            }
+            raw >>= bit_in_byte;
+
+            let a = (raw & mask).count_ones() as u16;
+            let b = ((raw >> half) & mask).count_ones() as u16;
+            *coeff = a.wrapping_sub(b);
+
+            bit_pos += MU;
+        }
+    }
+}
+
 // Algorithm 16, GenSecret
 /// Uses a random seed to generate an MLWR secret, i.e., an element in R^ℓ whose entries are
 /// sampled according to a binomial distribution
 pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
     seed: &[u8; 32],
 ) -> Matrix<L, 1> {
-    // Make a buffer of the correct length. We can't do const math there, so just make one of the
-    // max length and then cut it down
-
     // Hash the seed and make an XOF
     let mut xof = {
         let mut h = Shake128::default();
@@ -34,22 +79,10 @@ pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
     let mut backing_buf = [0u8; RING_DEG * MAX_MU / 8];
     let buf = &mut backing_buf[..RING_DEG * MU / 8];
 
-    // Sample the secret
+    // Sample the secret using the Centered Binomial Distribution
     for p in ring_elems.iter_mut() {
-        // For each secret entry, read some XOF bytes into a buffer and parse it
-        // as a ring elem whose coefficients are μ/2 bits
         xof.read(buf);
-        // TODO optimization: deserialize is overkill here. we only need to count the
-        // hamming weight of the deserialized words. This is done with the cheaper cbd()
-        // function in the reference impl. It's pretty nasty-looking though
-        let data: [u16; 2 * RING_DEG] = deserialize(buf, MU / 2);
-
-        // Output element i is hamming(data[2*i]) - hamming(data[2*i+1])
-        for (out_coeff, words) in p.0.iter_mut().zip(data.chunks_exact(2)) {
-            let hamming1 = words[0].count_ones() as u16;
-            let hamming2 = words[1].count_ones() as u16;
-            *out_coeff = hamming1.wrapping_sub(hamming2);
-        }
+        cbd::<MU>(buf, p);
     }
 
     Matrix([ring_elems]).transpose()
