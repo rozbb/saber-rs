@@ -91,10 +91,12 @@ const HALF: usize = RING_DEG / 2; // 128
 
 /// Schoolbook multiplication of two 128-coefficient polynomials.
 /// The product of two degree-127 polys has degree at most 254, so all 256 output slots suffice.
-/// Writes result into `out[0..255]`; `out` must be zeroed on entry.
-#[inline(never)] // Prevent inlining so the compiler optimizes this loop independently
-fn schoolbook_128(out: &mut [u16; RING_DEG], a: &[u16], b: &[u16]) {
-    debug_assert!(a.len() == HALF && b.len() == HALF);
+/// Writes result into `out[0..254]`; `out` must be zeroed on entry.
+///
+/// Takes fixed-size array references so the compiler knows the exact bounds and can
+/// eliminate all bounds checks and vectorize the inner loop.
+#[inline(never)] // Keep separate from Karatsuba so the compiler can optimize this loop on its own
+fn schoolbook_128(out: &mut [u16; RING_DEG], a: &[u16; HALF], b: &[u16; HALF]) {
     // Standard O(n²) schoolbook. The inner loop over b is contiguous in memory, which is
     // cache-friendly. The compiler can hoist a[i] as a loop-invariant broadcast.
     for i in 0..HALF {
@@ -119,8 +121,12 @@ fn schoolbook_128(out: &mut [u16; RING_DEG], a: &[u16], b: &[u16]) {
 /// And z1*X^128 wraps: coefficients 0..127 of z1 go to positions 128..255,
 /// while coefficients 128..255 of z1 wrap to positions 0..127 with a sign flip.
 pub(crate) fn ring_mul_acc(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
-    let (a_lo, a_hi) = a.0.split_at(HALF);
-    let (b_lo, b_hi) = b.0.split_at(HALF);
+    // Convert slices to fixed-size array references for the schoolbook function.
+    // These are infallible since we split a RING_DEG array exactly in half.
+    let a_lo: &[u16; HALF] = a.0[..HALF].try_into().unwrap();
+    let a_hi: &[u16; HALF] = a.0[HALF..].try_into().unwrap();
+    let b_lo: &[u16; HALF] = b.0[..HALF].try_into().unwrap();
+    let b_hi: &[u16; HALF] = b.0[HALF..].try_into().unwrap();
 
     // Compute the three schoolbook products into flat arrays.
     // Each is a product of two degree-127 polynomials, fitting in 256 coefficients.
@@ -139,24 +145,34 @@ pub(crate) fn ring_mul_acc(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
     let mut z3 = [0u16; RING_DEG];
     schoolbook_128(&mut z3, &a_sum, &b_sum);
 
-    // Accumulate the final result: acc += z0 - z2 + (z3 - z0 - z2)*X^128  mod (X^256+1)
+    // Accumulate: acc += z0 - z2 + (z3 - z0 - z2)*X^128  mod (X^256+1)
     //
-    // For each coefficient index i in 0..256 of the intermediate products:
-    //   - z0[i] and -z2[i] go directly to acc[i]
-    //   - z1[i] = z3[i] - z0[i] - z2[i] is the Karatsuba cross-term
-    //     * For i in 0..128:   z1[i]*X^(i+128) contributes to acc[i+128]
-    //     * For i in 128..256: z1[i]*X^(i+128) wraps mod (X^256+1) to acc[i-128] with negation
-    for i in 0..RING_DEG {
-        acc.0[i] = acc.0[i].wrapping_add(z0[i]).wrapping_sub(z2[i]);
+    // We merge into two loops of HALF iterations each (instead of three loops), so each
+    // element of acc is touched exactly once. This improves cache efficiency.
+    //
+    // For acc[j] where j in 0..HALF:
+    //   - z0[j] - z2[j] from the direct terms
+    //   - -(z3[j+HALF] - z0[j+HALF] - z2[j+HALF]) from z1[j+HALF]*X^(j+256) wrapping with negation
+    // For acc[j] where j in HALF..RING_DEG:
+    //   - z0[j] - z2[j] from the direct terms
+    //   - +(z3[j-HALF] - z0[j-HALF] - z2[j-HALF]) from z1[j-HALF]*X^j (no wrap)
+    for j in 0..HALF {
+        // z1_wrap = z1[j+128], which wraps to position j with sign flip (X^(j+256) = -X^j)
+        let z1_wrap = z3[j + HALF]
+            .wrapping_sub(z0[j + HALF])
+            .wrapping_sub(z2[j + HALF]);
+        acc.0[j] = acc.0[j]
+            .wrapping_add(z0[j])
+            .wrapping_sub(z2[j])
+            .wrapping_sub(z1_wrap);
     }
-    for i in 0..HALF {
-        let z1_i = z3[i].wrapping_sub(z0[i]).wrapping_sub(z2[i]);
-        acc.0[i + HALF] = acc.0[i + HALF].wrapping_add(z1_i);
-    }
-    // Coefficients 128..255 of z1 wrap around: X^(i+128) for i>=128 means X^(256+k) = -X^k
-    for i in HALF..RING_DEG {
-        let z1_i = z3[i].wrapping_sub(z0[i]).wrapping_sub(z2[i]);
-        acc.0[i - HALF] = acc.0[i - HALF].wrapping_sub(z1_i);
+    for j in 0..HALF {
+        // z1_direct = z1[j], shifted to position j+128 (no wrap)
+        let z1_direct = z3[j].wrapping_sub(z0[j]).wrapping_sub(z2[j]);
+        acc.0[j + HALF] = acc.0[j + HALF]
+            .wrapping_add(z0[j + HALF])
+            .wrapping_sub(z2[j + HALF])
+            .wrapping_add(z1_direct);
     }
 }
 
