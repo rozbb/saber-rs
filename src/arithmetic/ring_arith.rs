@@ -44,7 +44,7 @@ impl RingElem {
 
     /// Serializes this ring element, treating each coefficient as having only `bits_per_elem`
     /// bits. In Saber terms, this runs POLYk2BS where k = bits_per_elem
-    pub(crate) fn to_bytes(self, out_buf: &mut [u8], bits_per_elem: usize) {
+    pub(crate) fn to_bytes(&self, out_buf: &mut [u8], bits_per_elem: usize) {
         assert_eq!(out_buf.len(), bits_per_elem * RING_DEG / 8);
         serialize(&self.0, out_buf, bits_per_elem)
     }
