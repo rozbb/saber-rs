@@ -8,11 +8,6 @@ use crate::{
 
 use core::ops::{Add, Mul, Sub};
 
-// The degree (-1) of a polynomial at which point we revert to schoolbook multiplication. On my
-// computer, 128 is the optimal choice. This is kinda odd because it means we only do
-// 1 round of Karatsbua mult.
-const KARATSUBA_THRESHOLD: usize = 128;
-
 /// An element of the ring (Z/2^13 Z)[X] / (X^256 + 1)
 // The coefficients are in order of ascending powers, i.e., `self.0[0]` is the constant term
 #[derive(Eq, PartialEq, Debug, Clone, Copy)]
@@ -83,138 +78,97 @@ impl RingElem {
 impl<'a> Mul for &'a RingElem {
     type Output = RingElem;
 
-    // School book multiplication
     fn mul(self, other: &'a RingElem) -> Self::Output {
-        karatsuba_mul_helper(&self.0, &other.0)
-        // Replace the above line with the below line to remove Karatsuba optimization
-        //schoolbook_mul_helper(&self.0, &other.0)
-    }
-}
-
-/// Adds the two inputs, treating them as the lower coefficients of a RingElem
-fn poly_add(x: &[u16], y: &[u16]) -> RingElem {
-    let mut ret = RingElem::default();
-    let outlen = core::cmp::max(x.len(), y.len());
-    for i in 0..outlen {
-        let lhs = x.get(i).unwrap_or(&0);
-        let rhs = y.get(i).unwrap_or(&0);
-        ret.0[i] = lhs.wrapping_add(*rhs);
-    }
-    ret
-}
-
-/// Subtracts the two inputs, treating them as the lower coefficients of a RingElem
-fn poly_sub(x: &[u16], y: &[u16]) -> RingElem {
-    let mut ret = RingElem::default();
-    let outlen = core::cmp::max(x.len(), y.len());
-    for i in 0..outlen {
-        let lhs = x.get(i).unwrap_or(&0);
-        let rhs = y.get(i).unwrap_or(&0);
-        ret.0[i] = lhs.wrapping_sub(*rhs);
-    }
-    ret
-}
-
-/// Multiplies the given ring element by X^pow. In our representation, this means shifting the
-/// coefficients of p to the right, and multiplying by -1 when they wrap around
-fn mul_by_xpow(p: &RingElem, shift: usize) -> RingElem {
-    let mut ret = RingElem::default();
-    for i in 0..RING_DEG {
-        let idx = (i + shift) % RING_DEG;
-        // Have we wrapped around the ring degree and odd number of times?
-        let is_neg = ((i + shift) / RING_DEG) % 2 == 1;
-
-        // is_neg is a function of i and shift, and shift is determined by our level in the
-        // multiplication. So is_neg is a public value and therefore okay to branch on
-        if is_neg {
-            // If we've wrapped the ring degree an odd number of time, multiply by -1. This is
-            // because the ring is Z[X]/(X^256 + 1), so X^256 = -1
-            ret.0[idx] = ret.0[idx].wrapping_sub(p.0[i]);
-        } else {
-            ret.0[idx] = ret.0[idx].wrapping_add(p.0[i]);
-        }
-    }
-    ret
-}
-
-/// Returns p*q as ring elements, using the Karatsuba algorithm. p and q MUST be the same length
-fn karatsuba_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
-    assert_eq!(p.len(), q.len());
-    let n = p.len();
-
-    // Eventually, we have few enough terms that we should just do schoolbook multiplication
-    if n == KARATSUBA_THRESHOLD {
         let mut ret = RingElem::default();
-        // p and q are low-deg enough that there is no wrapping around the ring degree (256)
-        for (i, p_coeff) in p.iter().enumerate() {
-            for (j, q_coeff) in q.iter().enumerate() {
-                let prod = p_coeff.wrapping_mul(*q_coeff);
-                ret.0[i + j] = ret.0[i + j].wrapping_add(prod);
-            }
-        }
-        return ret;
+        ring_mul_acc(&mut ret, self, other);
+        ret
     }
-
-    // If you want to follow along, I used page 4 of these lecture notes
-    //     https://cs.dartmouth.edu/~deepc/LecNotes/cs31/lec6.pdf
-    // and the Wikipedia page on Karatsuba multiplication
-    //     https://en.wikipedia.org/wiki/Karatsuba_algorithm
-    // the z_i notation comes from the Wikipedia page
-
-    // Split the inputs into low and high halves
-    let mid = n / 2;
-    let pl = &p[..mid];
-    let ph = &p[mid..];
-    let ql = &q[..mid];
-    let qh = &q[mid..];
-
-    // Compute our intermediate products recursively
-    let z0 = karatsuba_mul_helper(pl, ql);
-    let z2 = karatsuba_mul_helper(ph, qh);
-    let z3 = karatsuba_mul_helper(&poly_add(pl, ph).0[..mid], &poly_add(ql, qh).0[..mid]);
-    let z1 = poly_sub(&poly_sub(&z3.0, &z2.0).0, &z0.0);
-
-    // Compute z0 + z1*X^mid + z2*X^(2mid)
-    let z1 = mul_by_xpow(&z1, mid);
-    let z2 = mul_by_xpow(&z2, 2 * mid);
-
-    poly_add(&poly_add(&z0.0, &z1.0).0, &z2.0)
 }
 
-/* Commenting out for now. This works just fine, but it's slower than karatsuba
-/// Does schoolbook multiplication of two ring elements
-fn schoolbook_mul_helper(p: &[u16], q: &[u16]) -> RingElem {
-    let mut result = RingElem::default();
-    // Do all the multiplications
-    for (i, p_coeff) in p.iter().enumerate() {
-        let mut q_iter = q.iter().enumerate();
+// Half the ring degree. We split 256-coefficient polys into two 128-coefficient halves
+// for a single level of Karatsuba.
+const HALF: usize = RING_DEG / 2; // 128
 
-        // Do multiplications up until i+j == RING_DEG
-        for _ in 0..(RING_DEG - i) {
-            let (j, q_coeff) = q_iter.next().expect("there are RING_DEG elems in q_iter");
-            let idx = i + j;
-            let prod = p_coeff.wrapping_mul(*q_coeff);
-            result.0[idx] = result.0[idx].wrapping_add(prod);
-        }
-
-        // Once we're past the ring degree, wrap around and multiply by -1. This is
-        // because the ring is Z[X]/(X^256 + 1), so X^256 = -1
-        for (j, q_coeff) in q_iter {
-            let idx = i + j - RING_DEG;
-            let prod = p[i].wrapping_mul(*q_coeff);
-            result.0[idx] = result.0[idx].wrapping_sub(prod);
+/// Schoolbook multiplication of two 128-coefficient polynomials.
+/// The product of two degree-127 polys has degree at most 254, so all 256 output slots suffice.
+/// Writes result into `out[0..255]`; `out` must be zeroed on entry.
+#[inline(never)] // Prevent inlining so the compiler optimizes this loop independently
+fn schoolbook_128(out: &mut [u16; RING_DEG], a: &[u16], b: &[u16]) {
+    debug_assert!(a.len() == HALF && b.len() == HALF);
+    // Standard O(n²) schoolbook. The inner loop over b is contiguous in memory, which is
+    // cache-friendly. The compiler can hoist a[i] as a loop-invariant broadcast.
+    for i in 0..HALF {
+        let ai = a[i];
+        for j in 0..HALF {
+            out[i + j] = out[i + j].wrapping_add(ai.wrapping_mul(b[j]));
         }
     }
-
-    result
 }
-*/
+
+/// Multiplies two ring elements using one level of Karatsuba, and **accumulates** the product
+/// into `acc`. This is the core hot function for Saber's matrix-vector multiplies.
+///
+/// We split each input into low and high 128-coefficient halves:
+///     a = a_lo + a_hi * X^128,   b = b_lo + b_hi * X^128
+/// Then use Karatsuba's identity:
+///     a*b = z0 + z1*X^128 + z2*X^256
+/// where z0 = a_lo*b_lo, z2 = a_hi*b_hi, z1 = (a_lo+a_hi)*(b_lo+b_hi) - z0 - z2.
+///
+/// Since we work in Z[X]/(X^256 + 1), X^256 = -1, so:
+///     a*b mod (X^256+1) = (z0 - z2) + z1*X^128  mod (X^256+1)
+/// And z1*X^128 wraps: coefficients 0..127 of z1 go to positions 128..255,
+/// while coefficients 128..255 of z1 wrap to positions 0..127 with a sign flip.
+pub(crate) fn ring_mul_acc(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
+    let (a_lo, a_hi) = a.0.split_at(HALF);
+    let (b_lo, b_hi) = b.0.split_at(HALF);
+
+    // Compute the three schoolbook products into flat arrays.
+    // Each is a product of two degree-127 polynomials, fitting in 256 coefficients.
+    let mut z0 = [0u16; RING_DEG];
+    let mut z2 = [0u16; RING_DEG];
+    schoolbook_128(&mut z0, a_lo, b_lo);
+    schoolbook_128(&mut z2, a_hi, b_hi);
+
+    // Compute (a_lo + a_hi) and (b_lo + b_hi) for the cross term
+    let mut a_sum = [0u16; HALF];
+    let mut b_sum = [0u16; HALF];
+    for i in 0..HALF {
+        a_sum[i] = a_lo[i].wrapping_add(a_hi[i]);
+        b_sum[i] = b_lo[i].wrapping_add(b_hi[i]);
+    }
+    let mut z3 = [0u16; RING_DEG];
+    schoolbook_128(&mut z3, &a_sum, &b_sum);
+
+    // Accumulate the final result: acc += z0 - z2 + (z3 - z0 - z2)*X^128  mod (X^256+1)
+    //
+    // For each coefficient index i in 0..256 of the intermediate products:
+    //   - z0[i] and -z2[i] go directly to acc[i]
+    //   - z1[i] = z3[i] - z0[i] - z2[i] is the Karatsuba cross-term
+    //     * For i in 0..128:   z1[i]*X^(i+128) contributes to acc[i+128]
+    //     * For i in 128..256: z1[i]*X^(i+128) wraps mod (X^256+1) to acc[i-128] with negation
+    for i in 0..RING_DEG {
+        acc.0[i] = acc.0[i].wrapping_add(z0[i]).wrapping_sub(z2[i]);
+    }
+    for i in 0..HALF {
+        let z1_i = z3[i].wrapping_sub(z0[i]).wrapping_sub(z2[i]);
+        acc.0[i + HALF] = acc.0[i + HALF].wrapping_add(z1_i);
+    }
+    // Coefficients 128..255 of z1 wrap around: X^(i+128) for i>=128 means X^(256+k) = -X^k
+    for i in HALF..RING_DEG {
+        let z1_i = z3[i].wrapping_sub(z0[i]).wrapping_sub(z2[i]);
+        acc.0[i - HALF] = acc.0[i - HALF].wrapping_sub(z1_i);
+    }
+}
 
 impl<'a> Add for &'a RingElem {
     type Output = RingElem;
 
     fn add(self, other: &'a RingElem) -> Self::Output {
-        poly_add(&self.0, &other.0)
+        let mut ret = RingElem::default();
+        for i in 0..RING_DEG {
+            ret.0[i] = self.0[i].wrapping_add(other.0[i]);
+        }
+        ret
     }
 }
 
@@ -222,7 +176,11 @@ impl<'a> Sub for &'a RingElem {
     type Output = RingElem;
 
     fn sub(self, other: &'a RingElem) -> Self::Output {
-        poly_sub(&self.0, &other.0)
+        let mut ret = RingElem::default();
+        for i in 0..RING_DEG {
+            ret.0[i] = self.0[i].wrapping_sub(other.0[i]);
+        }
+        ret
     }
 }
 
@@ -253,19 +211,61 @@ mod test {
         }
     }
 
-    // Tests equivalence of karatsuba and schoolbook multiplication
+    /// Naive schoolbook multiplication directly in Z[X]/(X^256+1) for testing.
+    /// This is the simplest correct implementation: O(n^2) with explicit ring reduction.
+    fn reference_schoolbook_ring_mul(a: &RingElem, b: &RingElem) -> RingElem {
+        let mut result = RingElem::default();
+        for i in 0..RING_DEG {
+            for j in 0..RING_DEG {
+                let prod = a.0[i].wrapping_mul(b.0[j]);
+                let idx = i + j;
+                if idx < RING_DEG {
+                    result.0[idx] = result.0[idx].wrapping_add(prod);
+                } else {
+                    // X^256 = -1 in our ring, so wrap and negate
+                    result.0[idx - RING_DEG] = result.0[idx - RING_DEG].wrapping_sub(prod);
+                }
+            }
+        }
+        result
+    }
+
+    // Tests that our Karatsuba-based ring_mul_acc matches the naive schoolbook ring multiply
     #[test]
-    fn karatsuba() {
+    fn karatsuba_vs_schoolbook() {
         let mut rng = rng();
 
         for _ in 0..100 {
             let a = RingElem::rand(&mut rng);
             let b = RingElem::rand(&mut rng);
 
-            let kara_prod = karatsuba_mul_helper(&a.0, &b.0);
-            let schoolbook_prod = &a * &b;
+            let reference = reference_schoolbook_ring_mul(&a, &b);
+            let optimized = &a * &b;
 
-            assert_eq!(kara_prod, schoolbook_prod);
+            assert_eq!(reference, optimized);
+        }
+    }
+
+    // Tests that ring_mul_acc correctly accumulates into a non-zero buffer
+    #[test]
+    fn mul_acc_accumulates() {
+        let mut rng = rng();
+
+        for _ in 0..50 {
+            let a = RingElem::rand(&mut rng);
+            let b = RingElem::rand(&mut rng);
+            let c = RingElem::rand(&mut rng);
+            let d = RingElem::rand(&mut rng);
+
+            // Compute a*b + c*d via ring_mul_acc
+            let mut acc = RingElem::default();
+            ring_mul_acc(&mut acc, &a, &b);
+            ring_mul_acc(&mut acc, &c, &d);
+
+            // Compute the same thing via separate multiplies + add
+            let expected = &(&a * &b) + &(&c * &d);
+
+            assert_eq!(acc, expected);
         }
     }
 
