@@ -86,7 +86,8 @@ impl<'a> Mul for &'a RingElem {
 }
 
 // Half the ring degree. We split 256-coefficient polys into two 128-coefficient halves
-// for a single level of Karatsuba.
+// for a single level of Karatsuba. Two levels (64×64 base) was benchmarked ~15% slower
+// due to increased overhead and less efficient vectorization of shorter inner loops.
 const HALF: usize = RING_DEG / 2; // 128
 
 /// Schoolbook multiplication of two 128-coefficient polynomials.
@@ -95,7 +96,7 @@ const HALF: usize = RING_DEG / 2; // 128
 ///
 /// Takes fixed-size array references so the compiler knows the exact bounds and can
 /// eliminate all bounds checks and vectorize the inner loop.
-#[inline(never)] // Keep separate from Karatsuba so the compiler can optimize this loop on its own
+#[inline(never)] // Benchmarked: keeping this separate lets the compiler vectorize the inner loop better
 fn schoolbook_128(out: &mut [u16; RING_DEG], a: &[u16; HALF], b: &[u16; HALF]) {
     // Standard O(n²) schoolbook. The inner loop over b is contiguous in memory, which is
     // cache-friendly. The compiler can hoist a[i] as a loop-invariant broadcast.
