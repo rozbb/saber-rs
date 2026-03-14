@@ -106,8 +106,7 @@ pub(crate) fn gen_keypair<const L: usize, const MU: usize>(
     let vec_s = gen_secret_from_seed::<L, MU>(&secret_seed);
     let b = {
         let mut prod = mat_a.mul_transpose(&vec_s);
-        prod.wrapping_add_to_all(H1_VAL);
-        prod.shift_right(MODULUS_Q_BITS - MODULUS_P_BITS);
+        prod.wrapping_add_and_shift_right(H1_VAL, MODULUS_Q_BITS - MODULUS_P_BITS);
         prod
     };
 
@@ -144,8 +143,7 @@ pub(crate) fn decrypt<const L: usize, const MODULUS_T_BITS: usize>(
     let mut mprime = &v - &c;
     let h2_val = (1 << (MODULUS_P_BITS - 2)) - (1 << (MODULUS_P_BITS - MODULUS_T_BITS - 1))
         + (1 << (MODULUS_Q_BITS - MODULUS_P_BITS - 1));
-    mprime.wrapping_add_to_all(h2_val);
-    mprime.shift_right(MODULUS_P_BITS - 1);
+    mprime.wrapping_add_and_shift_right(h2_val, MODULUS_P_BITS - 1);
 
     let mut m = [0u8; 32];
     mprime.to_bytes(&mut m, 1);
@@ -172,8 +170,7 @@ pub(crate) fn encrypt_deterministic<
 
     let bprime = {
         let mut prod = mat_a.mul(&vec_sprime);
-        prod.wrapping_add_to_all(H1_VAL);
-        prod.shift_right(MODULUS_Q_BITS - MODULUS_P_BITS);
+        prod.wrapping_add_and_shift_right(H1_VAL, MODULUS_Q_BITS - MODULUS_P_BITS);
         prod
     };
 
@@ -185,8 +182,7 @@ pub(crate) fn encrypt_deterministic<
 
     // Compute v' - mp + h₁
     let mut c = &vprime - &msg_polyn;
-    c.wrapping_add_to_all(H1_VAL);
-    c.shift_right(MODULUS_P_BITS - MODULUS_T_BITS);
+    c.wrapping_add_and_shift_right(H1_VAL, MODULUS_P_BITS - MODULUS_T_BITS);
 
     // Serialization order accoring to the reference implementation is b' || c
     // https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/SABER_indcpa.c#L68-L79

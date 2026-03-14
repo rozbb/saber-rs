@@ -30,6 +30,7 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     }
 
     /// Applies [`RingElem::shift_right`] to each element in the matrix
+    #[allow(dead_code)]
     pub(crate) fn shift_right(&mut self, shift: usize) {
         for row in self.0.iter_mut() {
             for elem in row.iter_mut() {
@@ -81,10 +82,21 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     }
 
     /// Adds a given value to all coefficients of all elements of the matrix
+    #[allow(dead_code)]
     pub(crate) fn wrapping_add_to_all(&mut self, val: u16) {
         for row in self.0.iter_mut() {
             for elem in row.iter_mut() {
                 elem.wrapping_add_to_all(val);
+            }
+        }
+    }
+
+    /// Fused add-then-shift on every element. Equivalent to `wrapping_add_to_all(val)` then
+    /// `shift_right(shift)`, but in a single pass to halve memory traffic.
+    pub(crate) fn wrapping_add_and_shift_right(&mut self, val: u16, shift: usize) {
+        for row in self.0.iter_mut() {
+            for elem in row.iter_mut() {
+                elem.wrapping_add_and_shift_right(val, shift);
             }
         }
     }
