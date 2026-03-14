@@ -72,20 +72,21 @@ pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
         h.finalize_xof()
     };
 
-    // Output secret is L ring elements
-    let mut ring_elems = [RingElem::default(); L];
+    // Output secret is a column vector (Matrix<L, 1>). We construct it directly
+    // rather than building a row vector and transposing, to avoid copying L RingElems.
+    let mut secret = Matrix::default();
     // Buffer to hold XOF bytes. Can't do const math here, so we make it the max size
     // and cut it down
     let mut backing_buf = [0u8; RING_DEG * MAX_MU / 8];
     let buf = &mut backing_buf[..RING_DEG * MU / 8];
 
     // Sample the secret using the Centered Binomial Distribution
-    for p in ring_elems.iter_mut() {
+    for row in secret.0.iter_mut() {
         xof.read(buf);
-        cbd::<MU>(buf, p);
+        cbd::<MU>(buf, &mut row[0]);
     }
 
-    Matrix([ring_elems]).transpose()
+    secret
 }
 
 // Algorithm 15, GenMatrix

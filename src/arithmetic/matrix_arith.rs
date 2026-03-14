@@ -39,6 +39,7 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     }
 
     /// Returns the matrix transpose
+    #[cfg(test)]
     pub(crate) fn transpose(&self) -> Matrix<Y, X> {
         let mut ret = Matrix::default();
         for i in 0..X {
