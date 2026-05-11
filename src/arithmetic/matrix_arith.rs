@@ -160,6 +160,24 @@ impl<'a, const X: usize, const Y: usize> core::ops::Add<&'a Matrix<X, Y>> for &'
 mod test {
     use super::*;
 
+    /// Helper: compare two matrices mod q = 2^13 (Toom-Cook is exact in the low
+    /// 13 bits; bits 13-15 may carry interpolation artefacts, matching the C
+    /// reference implementation).
+    fn assert_eq_mod_q<const X: usize, const Y: usize>(a: &Matrix<X, Y>, b: &Matrix<X, Y>) {
+        let q_mask: u16 = (1 << crate::consts::MODULUS_Q_BITS) - 1;
+        for i in 0..X {
+            for j in 0..Y {
+                for k in 0..crate::consts::RING_DEG {
+                    assert_eq!(
+                        a.0[i][j].0[k] & q_mask,
+                        b.0[i][j].0[k] & q_mask,
+                        "mod-q mismatch at [{i}][{j}].0[{k}]"
+                    );
+                }
+            }
+        }
+    }
+
     // Checks that mul and mul_transpose distribute over addition on the RHS
     #[test]
     fn distributivity() {
@@ -177,7 +195,7 @@ mod test {
             mat.mul_transpose(&vec_sum)
         };
         let prod2 = &mat.mul_transpose(&vec1) + &mat.mul_transpose(&vec2);
-        assert_eq!(prod1, prod2);
+        assert_eq_mod_q(&prod1, &prod2);
 
         // Now do the same with mul
         let vec1 = Matrix::<Y, 1>::rand(&mut rng);
@@ -187,7 +205,7 @@ mod test {
             mat.mul(&vec_sum)
         };
         let prod2 = &mat.mul(&vec1) + &mat.mul(&vec2);
-        assert_eq!(prod1, prod2);
+        assert_eq_mod_q(&prod1, &prod2);
     }
 
     // Checks that mul, mul_transpose, and transpose are consistent with each other

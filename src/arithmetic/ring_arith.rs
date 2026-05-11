@@ -112,106 +112,188 @@ impl<'a> Mul for &'a RingElem {
     }
 }
 
-// Half the ring degree. We split 256-coefficient polys into two 128-coefficient halves
-// for a single level of Karatsuba. Two levels (64×64 base) was benchmarked ~15% slower
-// due to increased overhead and less efficient vectorization of shorter inner loops.
-#[allow(dead_code)]
-const HALF: usize = RING_DEG / 2; // 128
+// ---------------------------------------------------------------------------
+// Toom-Cook-4 polynomial multiplication
+// ---------------------------------------------------------------------------
 
-/// Schoolbook multiplication of two 128-coefficient polynomials.
-/// The product of two degree-127 polys has degree at most 254, so all 256 output slots suffice.
-/// Writes result into `out[0..254]`; `out` must be zeroed on entry.
+/// Size of each quarter when splitting a 256-coeff polynomial for Toom-Cook-4.
+const QUARTER: usize = RING_DEG / 4; // 64
+
+/// Modular inverse of 3 mod 2^16 (used in Toom-Cook interpolation).
+const INV3: u16 = 43691;
+/// Modular inverse of 9 mod 2^16 (used in Toom-Cook interpolation).
+const INV9: u16 = 36409;
+/// Modular inverse of 15 mod 2^16 (used in Toom-Cook interpolation).
+const INV15: u16 = 61167;
+
+/// Schoolbook multiplication of two 64-coefficient polynomials.
 ///
-/// Takes fixed-size array references so the compiler knows the exact bounds and can
-/// eliminate all bounds checks and vectorize the inner loop.
-#[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
-#[inline(never)] // Benchmarked: keeping this separate lets the compiler vectorize the inner loop better
-fn schoolbook_128(out: &mut [u16; RING_DEG], a: &[u16; HALF], b: &[u16; HALF]) {
-    // Standard O(n²) schoolbook. The inner loop over b is contiguous in memory, which is
-    // cache-friendly. The compiler can hoist a[i] as a loop-invariant broadcast.
-    for i in 0..HALF {
+/// Computes `out += a * b` where `a` and `b` are degree-63 polynomials.
+/// `out` must be zeroed on entry. The product has at most 127 non-zero
+/// coefficients (indices 0..126); `out[127]` stays zero.
+fn schoolbook_64(out: &mut [u16; 2 * QUARTER], a: &[u16; QUARTER], b: &[u16; QUARTER]) {
+    for i in 0..QUARTER {
         let ai = a[i];
-        for j in 0..HALF {
+        for j in 0..QUARTER {
             out[i + j] = out[i + j].wrapping_add(ai.wrapping_mul(b[j]));
         }
     }
 }
 
-/// Multiplies two ring elements using one level of Karatsuba, and **accumulates** the product
-/// into `acc`. This is the core hot function for Saber's matrix-vector multiplies.
+/// Toom-Cook-4 multiplication of two 256-coefficient polynomials.
 ///
-/// We split each input into low and high 128-coefficient halves:
-///     a = a_lo + a_hi * X^128,   b = b_lo + b_hi * X^128
-/// Then use Karatsuba's identity:
-///     a*b = z0 + z1*X^128 + z2*X^256
-/// where z0 = a_lo*b_lo, z2 = a_hi*b_hi, z1 = (a_lo+a_hi)*(b_lo+b_hi) - z0 - z2.
+/// Splits each input into 4 chunks of 64 coefficients, evaluates at 7 points
+/// {0, 1, −1, 2, ½, −½, ∞}, multiplies pointwise (7 × schoolbook-64), and
+/// interpolates to recover the full 512-coefficient product.
 ///
-/// Since we work in Z[X]/(X^256 + 1), X^256 = -1, so:
-///     a*b mod (X^256+1) = (z0 - z2) + z1*X^128  mod (X^256+1)
-/// And z1*X^128 wraps: coefficients 0..127 of z1 go to positions 128..255,
-/// while coefficients 128..255 of z1 wrap to positions 0..127 with a sign flip.
-pub(crate) fn ring_mul_acc(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
-    #[cfg(all(feature = "neon", target_arch = "aarch64"))]
-    super::neon::ring_mul_acc_neon(acc, a, b);
+/// This reduces the number of base-case scalar products from 3 × 128² = 49 152
+/// (one-level Karatsuba) to 7 × 64² = 28 672 — a 42 % reduction.
+///
+/// The evaluation and interpolation follow the Saber reference implementation
+/// (`poly_mul.c`), which uses the standard Toom-4 matrix with scaled ½-points
+/// to avoid fractions.
+fn toom_cook_4way(a: &RingElem, b: &RingElem, result: &mut [u16; 2 * RING_DEG]) {
+    // Split into quarters
+    let a0: &[u16; QUARTER] = a.0[..QUARTER].try_into().unwrap();
+    let a1: &[u16; QUARTER] = a.0[QUARTER..2 * QUARTER].try_into().unwrap();
+    let a2: &[u16; QUARTER] = a.0[2 * QUARTER..3 * QUARTER].try_into().unwrap();
+    let a3: &[u16; QUARTER] = a.0[3 * QUARTER..].try_into().unwrap();
 
-    #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
-    ring_mul_acc_scalar(acc, a, b);
+    let b0: &[u16; QUARTER] = b.0[..QUARTER].try_into().unwrap();
+    let b1: &[u16; QUARTER] = b.0[QUARTER..2 * QUARTER].try_into().unwrap();
+    let b2: &[u16; QUARTER] = b.0[2 * QUARTER..3 * QUARTER].try_into().unwrap();
+    let b3: &[u16; QUARTER] = b.0[3 * QUARTER..].try_into().unwrap();
+
+    // --- Evaluation ---
+    // Evaluate a(x) = a0 + a1·x + a2·x² + a3·x³ at 7 points, coefficient-wise.
+    let mut aw1 = [0u16; QUARTER]; // a(∞) = a3
+    let mut aw2 = [0u16; QUARTER]; // a(2)
+    let mut aw3 = [0u16; QUARTER]; // a(1)
+    let mut aw4 = [0u16; QUARTER]; // a(−1)
+    let mut aw5 = [0u16; QUARTER]; // 8·a(½)
+    let mut aw6 = [0u16; QUARTER]; // 8·a(−½)
+    let mut aw7 = [0u16; QUARTER]; // a(0) = a0
+
+    let mut bw1 = [0u16; QUARTER];
+    let mut bw2 = [0u16; QUARTER];
+    let mut bw3 = [0u16; QUARTER];
+    let mut bw4 = [0u16; QUARTER];
+    let mut bw5 = [0u16; QUARTER];
+    let mut bw6 = [0u16; QUARTER];
+    let mut bw7 = [0u16; QUARTER];
+
+    for j in 0..QUARTER {
+        let (r0, r1, r2, r3) = (a0[j], a1[j], a2[j], a3[j]);
+        let r4 = r0.wrapping_add(r2);
+        let r5 = r1.wrapping_add(r3);
+        aw3[j] = r4.wrapping_add(r5); // a(1)
+        aw4[j] = r4.wrapping_sub(r5); // a(−1)
+        let r4 = (r0 << 2).wrapping_add(r2) << 1; // 8·a0 + 2·a2
+        let r5 = (r1 << 2).wrapping_add(r3); // 4·a1 + a3
+        aw5[j] = r4.wrapping_add(r5); // 8·a(½)
+        aw6[j] = r4.wrapping_sub(r5); // 8·a(−½)
+        aw2[j] = (r3 << 3)
+            .wrapping_add(r2 << 2)
+            .wrapping_add(r1 << 1)
+            .wrapping_add(r0); // a(2)
+        aw7[j] = r0; // a(0)
+        aw1[j] = r3; // a(∞)
+    }
+    for j in 0..QUARTER {
+        let (r0, r1, r2, r3) = (b0[j], b1[j], b2[j], b3[j]);
+        let r4 = r0.wrapping_add(r2);
+        let r5 = r1.wrapping_add(r3);
+        bw3[j] = r4.wrapping_add(r5);
+        bw4[j] = r4.wrapping_sub(r5);
+        let r4 = (r0 << 2).wrapping_add(r2) << 1;
+        let r5 = (r1 << 2).wrapping_add(r3);
+        bw5[j] = r4.wrapping_add(r5);
+        bw6[j] = r4.wrapping_sub(r5);
+        bw2[j] = (r3 << 3)
+            .wrapping_add(r2 << 2)
+            .wrapping_add(r1 << 1)
+            .wrapping_add(r0);
+        bw7[j] = r0;
+        bw1[j] = r3;
+    }
+
+    // --- Pointwise multiplication (7 base-case 64×64 schoolbook multiplies) ---
+    let mut w1 = [0u16; 2 * QUARTER];
+    let mut w2 = [0u16; 2 * QUARTER];
+    let mut w3 = [0u16; 2 * QUARTER];
+    let mut w4 = [0u16; 2 * QUARTER];
+    let mut w5 = [0u16; 2 * QUARTER];
+    let mut w6 = [0u16; 2 * QUARTER];
+    let mut w7 = [0u16; 2 * QUARTER];
+
+    schoolbook_64(&mut w1, &aw1, &bw1);
+    schoolbook_64(&mut w2, &aw2, &bw2);
+    schoolbook_64(&mut w3, &aw3, &bw3);
+    schoolbook_64(&mut w4, &aw4, &bw4);
+    schoolbook_64(&mut w5, &aw5, &bw5);
+    schoolbook_64(&mut w6, &aw6, &bw6);
+    schoolbook_64(&mut w7, &aw7, &bw7);
+
+    // --- Interpolation ---
+    // Recover the 7 segments of the degree-6 (in x) product polynomial and
+    // accumulate into `result` at offsets 0, 64, 128, 192, 256, 320, 384.
+    // Interpolation: recover the 7 segments of the product polynomial.
+    //
+    // All arithmetic uses i32 to exactly match C's implicit uint16_t → int
+    // promotion.  After each statement the value is truncated back to u16
+    // (via `as u16 as i32`) so that subsequent reads see 0..65535, just as
+    // C's uint16_t variables would.
+    let n_sb_res = 2 * QUARTER - 1; // 127
+    for i in 0..n_sb_res {
+        let r0 = w1[i] as i32;
+        let mut r1 = w2[i] as i32;
+        let mut r2 = w3[i] as i32;
+        let mut r3 = w4[i] as i32;
+        let mut r4 = w5[i] as i32;
+        let mut r5 = w6[i] as i32;
+        let r6 = w7[i] as i32;
+
+        r1 = (r1 + r4) as u16 as i32;
+        r5 = (r5 - r4) as u16 as i32;
+        r3 = ((r3 - r2) >> 1) as u16 as i32;
+        r4 = (r4 - r0) as u16 as i32;
+        r4 = (r4 - (r6 << 6)) as u16 as i32;
+        r4 = ((r4 << 1) + r5) as u16 as i32;
+        r2 = (r2 + r3) as u16 as i32;
+        r1 = (r1 - (r2 << 6) - r2) as u16 as i32;
+        r2 = (r2 - r6) as u16 as i32;
+        r2 = (r2 - r0) as u16 as i32;
+        r1 = (r1 + 45 * r2) as u16 as i32;
+        r4 = (((r4 - (r2 << 3)) as u32).wrapping_mul(INV3 as u32) >> 3) as u16 as i32;
+        r5 = (r5 + r1) as u16 as i32;
+        r1 = (((r1 + (r3 << 4)) as u32).wrapping_mul(INV9 as u32) >> 1) as u16 as i32;
+        r3 = (-(r3 + r1)) as u16 as i32;
+        r5 = (((30 * r1 - r5) as u32).wrapping_mul(INV15 as u32) >> 2) as u16 as i32;
+        r2 = (r2 - r4) as u16 as i32;
+        r1 = (r1 - r5) as u16 as i32;
+
+        result[i] = result[i].wrapping_add(r6 as u16);
+        result[i + QUARTER] = result[i + QUARTER].wrapping_add(r5 as u16);
+        result[i + 2 * QUARTER] = result[i + 2 * QUARTER].wrapping_add(r4 as u16);
+        result[i + 3 * QUARTER] = result[i + 3 * QUARTER].wrapping_add(r3 as u16);
+        result[i + 4 * QUARTER] = result[i + 4 * QUARTER].wrapping_add(r2 as u16);
+        result[i + 5 * QUARTER] = result[i + 5 * QUARTER].wrapping_add(r1 as u16);
+        result[i + 6 * QUARTER] = result[i + 6 * QUARTER].wrapping_add(r0 as u16);
+    }
 }
 
-#[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
-fn ring_mul_acc_scalar(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
-    // Convert slices to fixed-size array references for the schoolbook function.
-    // These are infallible since we split a RING_DEG array exactly in half.
-    let a_lo: &[u16; HALF] = a.0[..HALF].try_into().unwrap();
-    let a_hi: &[u16; HALF] = a.0[HALF..].try_into().unwrap();
-    let b_lo: &[u16; HALF] = b.0[..HALF].try_into().unwrap();
-    let b_hi: &[u16; HALF] = b.0[HALF..].try_into().unwrap();
+/// Multiplies two ring elements using Toom-Cook-4, and **accumulates** the product
+/// into `acc`. This is the core hot function for Saber's matrix-vector multiplies.
+pub(crate) fn ring_mul_acc(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
+    let mut full_product = [0u16; 2 * RING_DEG];
+    toom_cook_4way(a, b, &mut full_product);
 
-    // Compute the three schoolbook products into flat arrays.
-    // Each is a product of two degree-127 polynomials, fitting in 256 coefficients.
-    let mut z0 = [0u16; RING_DEG];
-    let mut z2 = [0u16; RING_DEG];
-    schoolbook_128(&mut z0, a_lo, b_lo);
-    schoolbook_128(&mut z2, a_hi, b_hi);
-
-    // Compute (a_lo + a_hi) and (b_lo + b_hi) for the cross term
-    let mut a_sum = [0u16; HALF];
-    let mut b_sum = [0u16; HALF];
-    for i in 0..HALF {
-        a_sum[i] = a_lo[i].wrapping_add(a_hi[i]);
-        b_sum[i] = b_lo[i].wrapping_add(b_hi[i]);
-    }
-    let mut z3 = [0u16; RING_DEG];
-    schoolbook_128(&mut z3, &a_sum, &b_sum);
-
-    // Accumulate: acc += z0 - z2 + (z3 - z0 - z2)*X^128  mod (X^256+1)
-    //
-    // We merge into two loops of HALF iterations each (instead of three loops), so each
-    // element of acc is touched exactly once. This improves cache efficiency.
-    //
-    // For acc[j] where j in 0..HALF:
-    //   - z0[j] - z2[j] from the direct terms
-    //   - -(z3[j+HALF] - z0[j+HALF] - z2[j+HALF]) from z1[j+HALF]*X^(j+256) wrapping with negation
-    // For acc[j] where j in HALF..RING_DEG:
-    //   - z0[j] - z2[j] from the direct terms
-    //   - +(z3[j-HALF] - z0[j-HALF] - z2[j-HALF]) from z1[j-HALF]*X^j (no wrap)
-    for j in 0..HALF {
-        // z1_wrap = z1[j+128], which wraps to position j with sign flip (X^(j+256) = -X^j)
-        let z1_wrap = z3[j + HALF]
-            .wrapping_sub(z0[j + HALF])
-            .wrapping_sub(z2[j + HALF]);
-        acc.0[j] = acc.0[j]
-            .wrapping_add(z0[j])
-            .wrapping_sub(z2[j])
-            .wrapping_sub(z1_wrap);
-    }
-    for j in 0..HALF {
-        // z1_direct = z1[j], shifted to position j+128 (no wrap)
-        let z1_direct = z3[j].wrapping_sub(z0[j]).wrapping_sub(z2[j]);
-        acc.0[j + HALF] = acc.0[j + HALF]
-            .wrapping_add(z0[j + HALF])
-            .wrapping_sub(z2[j + HALF])
-            .wrapping_add(z1_direct);
+    // Reduce mod X^256 + 1: since X^256 ≡ −1, coefficient i of the reduced
+    // result is full_product[i] − full_product[i + 256].
+    for i in 0..RING_DEG {
+        acc.0[i] = acc.0[i]
+            .wrapping_add(full_product[i])
+            .wrapping_sub(full_product[i + RING_DEG]);
     }
 }
 
@@ -297,10 +379,53 @@ mod test {
         result
     }
 
-    // Tests that our Karatsuba-based ring_mul_acc matches the naive schoolbook ring multiply
+    // Debug: compare against C reference output for known input
     #[test]
-    fn karatsuba_vs_schoolbook() {
+    fn toom_cook_vs_c_reference() {
+        let mut a = RingElem::default();
+        let mut b = RingElem::default();
+        for i in 0..64 {
+            a.0[i] = (i + 1) as u16;
+            b.0[i] = (i + 1) as u16;
+        }
+        for i in 64..128 {
+            a.0[i] = (100 + i) as u16;
+            b.0[i] = (200 + i) as u16;
+        }
+
+        let mut tc = [0u16; 2 * RING_DEG];
+        toom_cook_4way(&a, &b, &mut tc);
+
+        // First 130 values from the C reference implementation
+        let c_ref: [u16; 130] = [
+            1, 4, 10, 20, 35, 56, 84, 120, 165, 220, 286, 364, 455, 560, 680, 816, 969, 1140, 1330,
+            1540, 1771, 2024, 2300, 2600, 2925, 3276, 3654, 4060, 4495, 4960, 5456, 5984, 6545,
+            7140, 7770, 8436, 9139, 9880, 10660, 11480, 12341, 13244, 14190, 15180, 16215, 17296,
+            18424, 19600, 20825, 22100, 23426, 24804, 26235, 27720, 29260, 30856, 32509, 34220,
+            35990, 37820, 39711, 41664, 43680, 45760, 64587, 1858, 37798, 24952, 61625, 16746,
+            37772, 10016, 31783, 4770, 60050, 17400, 24277, 47914, 55544, 63552, 22787, 31554,
+            57086, 50232, 60145, 21290, 15588, 43040, 5343, 33570, 62186, 25656, 22285, 2922,
+            49488, 30912, 29115, 60482, 10326, 58872, 25897, 9706, 43068, 44064, 12695, 47266,
+            49474, 35704, 5957, 42154, 29608, 1088, 54899, 59970, 65454, 54968, 61281, 51626,
+            26004, 17184, 41551, 802, 42394, 2488, 28541, 22250, 0, 43712, 500, 55462,
+        ];
+
+        for i in 0..130 {
+            assert_eq!(
+                tc[i], c_ref[i],
+                "mismatch at index {i}: rust={}, c={}",
+                tc[i], c_ref[i]
+            );
+        }
+    }
+
+    // Tests that our Toom-Cook matches the naive schoolbook in the low 13 bits
+    // (the Saber modulus q = 2^13). The Toom-Cook interpolation's right shifts
+    // introduce errors above bit 13, matching the C reference implementation.
+    #[test]
+    fn toom_cook_vs_schoolbook() {
         let mut rng = rng();
+        let q_mask = (1u16 << crate::consts::MODULUS_Q_BITS) - 1; // 0x1FFF
 
         for _ in 0..100 {
             let a = RingElem::rand(&mut rng);
@@ -309,7 +434,13 @@ mod test {
             let reference = reference_schoolbook_ring_mul(&a, &b);
             let optimized = &a * &b;
 
-            assert_eq!(reference, optimized);
+            for k in 0..RING_DEG {
+                assert_eq!(
+                    optimized.0[k] & q_mask,
+                    reference.0[k] & q_mask,
+                    "mod-q mismatch at coeff {k}"
+                );
+            }
         }
     }
 
