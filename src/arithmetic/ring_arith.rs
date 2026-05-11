@@ -54,6 +54,10 @@ impl RingElem {
     /// power of two with rounding
     #[allow(dead_code)]
     pub(crate) fn shift_right(&mut self, shift: usize) {
+        #[cfg(all(feature = "neon", target_arch = "aarch64"))]
+        super::neon::shift_right_neon(&mut self.0, shift);
+
+        #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
         for coeff in self.0.iter_mut() {
             *coeff >>= shift;
         }
@@ -63,6 +67,10 @@ impl RingElem {
     /// Left-shifts each coefficient by the specified amount, essentially multiplying each coeff by
     /// a power of two, mod 2^16
     pub(crate) fn shift_left(&mut self, shift: usize) {
+        #[cfg(all(feature = "neon", target_arch = "aarch64"))]
+        super::neon::shift_left_neon(&mut self.0, shift);
+
+        #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
         for coeff in self.0.iter_mut() {
             *coeff <<= shift;
         }
@@ -71,6 +79,10 @@ impl RingElem {
     /// Adds a given value to all coefficients
     #[allow(dead_code)]
     pub(crate) fn wrapping_add_to_all(&mut self, val: u16) {
+        #[cfg(all(feature = "neon", target_arch = "aarch64"))]
+        super::neon::wrapping_add_to_all_neon(&mut self.0, val);
+
+        #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
         for coeff in self.0.iter_mut() {
             *coeff = coeff.wrapping_add(val);
         }
@@ -80,6 +92,10 @@ impl RingElem {
     /// Equivalent to `wrapping_add_to_all(val)` followed by `shift_right(shift)`, but in a
     /// single pass over the coefficients to halve memory traffic.
     pub(crate) fn wrapping_add_and_shift_right(&mut self, val: u16, shift: usize) {
+        #[cfg(all(feature = "neon", target_arch = "aarch64"))]
+        super::neon::wrapping_add_and_shift_right_neon(&mut self.0, val, shift);
+
+        #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
         for coeff in self.0.iter_mut() {
             *coeff = coeff.wrapping_add(val) >> shift;
         }
@@ -99,6 +115,7 @@ impl<'a> Mul for &'a RingElem {
 // Half the ring degree. We split 256-coefficient polys into two 128-coefficient halves
 // for a single level of Karatsuba. Two levels (64×64 base) was benchmarked ~15% slower
 // due to increased overhead and less efficient vectorization of shorter inner loops.
+#[allow(dead_code)]
 const HALF: usize = RING_DEG / 2; // 128
 
 /// Schoolbook multiplication of two 128-coefficient polynomials.
@@ -107,6 +124,7 @@ const HALF: usize = RING_DEG / 2; // 128
 ///
 /// Takes fixed-size array references so the compiler knows the exact bounds and can
 /// eliminate all bounds checks and vectorize the inner loop.
+#[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
 #[inline(never)] // Benchmarked: keeping this separate lets the compiler vectorize the inner loop better
 fn schoolbook_128(out: &mut [u16; RING_DEG], a: &[u16; HALF], b: &[u16; HALF]) {
     // Standard O(n²) schoolbook. The inner loop over b is contiguous in memory, which is
@@ -133,6 +151,15 @@ fn schoolbook_128(out: &mut [u16; RING_DEG], a: &[u16; HALF], b: &[u16; HALF]) {
 /// And z1*X^128 wraps: coefficients 0..127 of z1 go to positions 128..255,
 /// while coefficients 128..255 of z1 wrap to positions 0..127 with a sign flip.
 pub(crate) fn ring_mul_acc(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
+    #[cfg(all(feature = "neon", target_arch = "aarch64"))]
+    super::neon::ring_mul_acc_neon(acc, a, b);
+
+    #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
+    ring_mul_acc_scalar(acc, a, b);
+}
+
+#[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
+fn ring_mul_acc_scalar(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
     // Convert slices to fixed-size array references for the schoolbook function.
     // These are infallible since we split a RING_DEG array exactly in half.
     let a_lo: &[u16; HALF] = a.0[..HALF].try_into().unwrap();
@@ -193,9 +220,15 @@ impl<'a> Add for &'a RingElem {
 
     fn add(self, other: &'a RingElem) -> Self::Output {
         let mut ret = RingElem::default();
+
+        #[cfg(all(feature = "neon", target_arch = "aarch64"))]
+        super::neon::add_neon(&self.0, &other.0, &mut ret.0);
+
+        #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
         for i in 0..RING_DEG {
             ret.0[i] = self.0[i].wrapping_add(other.0[i]);
         }
+
         ret
     }
 }
@@ -205,9 +238,15 @@ impl<'a> Sub for &'a RingElem {
 
     fn sub(self, other: &'a RingElem) -> Self::Output {
         let mut ret = RingElem::default();
+
+        #[cfg(all(feature = "neon", target_arch = "aarch64"))]
+        super::neon::sub_neon(&self.0, &other.0, &mut ret.0);
+
+        #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
         for i in 0..RING_DEG {
             ret.0[i] = self.0[i].wrapping_sub(other.0[i]);
         }
+
         ret
     }
 }
