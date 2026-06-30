@@ -57,7 +57,13 @@ impl RingElem {
         #[cfg(all(feature = "neon", target_arch = "aarch64"))]
         super::neon::shift_right_neon(&mut self.0, shift);
 
-        #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
+        #[cfg(all(feature = "avx2", target_arch = "x86_64"))]
+        super::avx2::shift_right_avx2(&mut self.0, shift);
+
+        #[cfg(not(any(
+            all(feature = "neon", target_arch = "aarch64"),
+            all(feature = "avx2", target_arch = "x86_64"),
+        )))]
         for coeff in self.0.iter_mut() {
             *coeff >>= shift;
         }
@@ -70,7 +76,13 @@ impl RingElem {
         #[cfg(all(feature = "neon", target_arch = "aarch64"))]
         super::neon::shift_left_neon(&mut self.0, shift);
 
-        #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
+        #[cfg(all(feature = "avx2", target_arch = "x86_64"))]
+        super::avx2::shift_left_avx2(&mut self.0, shift);
+
+        #[cfg(not(any(
+            all(feature = "neon", target_arch = "aarch64"),
+            all(feature = "avx2", target_arch = "x86_64"),
+        )))]
         for coeff in self.0.iter_mut() {
             *coeff <<= shift;
         }
@@ -82,7 +94,13 @@ impl RingElem {
         #[cfg(all(feature = "neon", target_arch = "aarch64"))]
         super::neon::wrapping_add_to_all_neon(&mut self.0, val);
 
-        #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
+        #[cfg(all(feature = "avx2", target_arch = "x86_64"))]
+        super::avx2::wrapping_add_to_all_avx2(&mut self.0, val);
+
+        #[cfg(not(any(
+            all(feature = "neon", target_arch = "aarch64"),
+            all(feature = "avx2", target_arch = "x86_64"),
+        )))]
         for coeff in self.0.iter_mut() {
             *coeff = coeff.wrapping_add(val);
         }
@@ -95,7 +113,13 @@ impl RingElem {
         #[cfg(all(feature = "neon", target_arch = "aarch64"))]
         super::neon::wrapping_add_and_shift_right_neon(&mut self.0, val, shift);
 
-        #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
+        #[cfg(all(feature = "avx2", target_arch = "x86_64"))]
+        super::avx2::wrapping_add_and_shift_right_avx2(&mut self.0, val, shift);
+
+        #[cfg(not(any(
+            all(feature = "neon", target_arch = "aarch64"),
+            all(feature = "avx2", target_arch = "x86_64"),
+        )))]
         for coeff in self.0.iter_mut() {
             *coeff = coeff.wrapping_add(val) >> shift;
         }
@@ -124,7 +148,10 @@ const HALF: usize = RING_DEG / 2; // 128
 ///
 /// Takes fixed-size array references so the compiler knows the exact bounds and can
 /// eliminate all bounds checks and vectorize the inner loop.
-#[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
+#[cfg(not(any(
+    all(feature = "neon", target_arch = "aarch64"),
+    all(feature = "avx2", target_arch = "x86_64"),
+)))]
 #[inline(never)] // Benchmarked: keeping this separate lets the compiler vectorize the inner loop better
 fn schoolbook_128(out: &mut [u16; RING_DEG], a: &[u16; HALF], b: &[u16; HALF]) {
     // Standard O(n²) schoolbook. The inner loop over b is contiguous in memory, which is
@@ -143,11 +170,20 @@ pub(crate) fn ring_mul_acc(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
     #[cfg(all(feature = "neon", target_arch = "aarch64"))]
     super::neon::ring_mul_acc_neon(acc, a, b);
 
-    #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
+    #[cfg(all(feature = "avx2", target_arch = "x86_64"))]
+    super::avx2::ring_mul_acc_avx2(acc, a, b);
+
+    #[cfg(not(any(
+        all(feature = "neon", target_arch = "aarch64"),
+        all(feature = "avx2", target_arch = "x86_64"),
+    )))]
     ring_mul_acc_scalar(acc, a, b);
 }
 
-#[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
+#[cfg(not(any(
+    all(feature = "neon", target_arch = "aarch64"),
+    all(feature = "avx2", target_arch = "x86_64"),
+)))]
 fn ring_mul_acc_scalar(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
     // Convert slices to fixed-size array references for the schoolbook function.
     // These are infallible since we split a RING_DEG array exactly in half.
@@ -218,7 +254,13 @@ impl<'a> Add for &'a RingElem {
         #[cfg(all(feature = "neon", target_arch = "aarch64"))]
         super::neon::add_neon(&self.0, &other.0, &mut ret.0);
 
-        #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
+        #[cfg(all(feature = "avx2", target_arch = "x86_64"))]
+        super::avx2::add_avx2(&self.0, &other.0, &mut ret.0);
+
+        #[cfg(not(any(
+            all(feature = "neon", target_arch = "aarch64"),
+            all(feature = "avx2", target_arch = "x86_64"),
+        )))]
         for i in 0..RING_DEG {
             ret.0[i] = self.0[i].wrapping_add(other.0[i]);
         }
@@ -236,7 +278,13 @@ impl<'a> Sub for &'a RingElem {
         #[cfg(all(feature = "neon", target_arch = "aarch64"))]
         super::neon::sub_neon(&self.0, &other.0, &mut ret.0);
 
-        #[cfg(not(all(feature = "neon", target_arch = "aarch64")))]
+        #[cfg(all(feature = "avx2", target_arch = "x86_64"))]
+        super::avx2::sub_avx2(&self.0, &other.0, &mut ret.0);
+
+        #[cfg(not(any(
+            all(feature = "neon", target_arch = "aarch64"),
+            all(feature = "avx2", target_arch = "x86_64"),
+        )))]
         for i in 0..RING_DEG {
             ret.0[i] = self.0[i].wrapping_sub(other.0[i]);
         }

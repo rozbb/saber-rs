@@ -26,6 +26,7 @@ hex = "0.4"
 [features]
 default = ["asm"]
 asm = ["sha3/asm"]
+avx2 = []
 neon = []
 
 [[bench]]
