@@ -160,10 +160,14 @@ impl<'a, const X: usize, const Y: usize> core::ops::Add<&'a Matrix<X, Y>> for &'
 mod test {
     use super::*;
 
-    /// Compare two matrices element-wise. When using the AVX2 Toom-Cook 4-way
-    /// ring multiplication, the product is only exact modulo 2^MODULUS_Q_BITS.
+    /// Compare two matrices element-wise. When using Toom-Cook 4-way ring
+    /// multiplication (AVX2 or NEON), the product is only exact modulo
+    /// 2^MODULUS_Q_BITS.
     fn assert_matrix_eq<const X: usize, const Y: usize>(a: &Matrix<X, Y>, b: &Matrix<X, Y>) {
-        #[cfg(all(feature = "avx2", target_arch = "x86_64"))]
+        #[cfg(any(
+            all(feature = "avx2", target_arch = "x86_64"),
+            all(feature = "neon", target_arch = "aarch64"),
+        ))]
         {
             let mask = (1u16 << crate::consts::MODULUS_Q_BITS) - 1;
             for i in 0..X {
@@ -180,7 +184,10 @@ mod test {
                 }
             }
         }
-        #[cfg(not(all(feature = "avx2", target_arch = "x86_64")))]
+        #[cfg(not(any(
+            all(feature = "avx2", target_arch = "x86_64"),
+            all(feature = "neon", target_arch = "aarch64"),
+        )))]
         assert_eq!(a, b);
     }
 

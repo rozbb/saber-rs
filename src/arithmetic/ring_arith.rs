@@ -300,12 +300,15 @@ mod test {
 
     use rand::{rng, Rng, RngCore};
 
-    /// Compare two RingElems. With the AVX2 Toom-Cook 4-way implementation, the
-    /// ring product is only exact modulo 2^MODULUS_Q_BITS (the SABER coefficient
-    /// modulus), because the interpolation right-shift divisions lose the top
-    /// bits. On other targets (scalar Karatsuba or NEON Karatsuba), the result
-    /// is exact mod 2^16.
-    #[cfg(all(feature = "avx2", target_arch = "x86_64"))]
+    /// Compare two RingElems. With Toom-Cook 4-way multiplication (AVX2 and
+    /// NEON), the ring product is only exact modulo 2^MODULUS_Q_BITS (the
+    /// SABER coefficient modulus), because the interpolation right-shift
+    /// divisions lose the top bits. On other targets (scalar Karatsuba), the
+    /// result is exact mod 2^16.
+    #[cfg(any(
+        all(feature = "avx2", target_arch = "x86_64"),
+        all(feature = "neon", target_arch = "aarch64"),
+    ))]
     fn assert_ring_eq(a: &RingElem, b: &RingElem) {
         let mask = (1u16 << crate::consts::MODULUS_Q_BITS) - 1;
         for i in 0..RING_DEG {
@@ -319,7 +322,10 @@ mod test {
         }
     }
 
-    #[cfg(not(all(feature = "avx2", target_arch = "x86_64")))]
+    #[cfg(not(any(
+        all(feature = "avx2", target_arch = "x86_64"),
+        all(feature = "neon", target_arch = "aarch64"),
+    )))]
     fn assert_ring_eq(a: &RingElem, b: &RingElem) {
         assert_eq!(a, b);
     }
