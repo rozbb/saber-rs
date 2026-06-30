@@ -300,6 +300,30 @@ mod test {
 
     use rand::{rng, Rng, RngCore};
 
+    /// Compare two RingElems. With the AVX2 Toom-Cook 4-way implementation, the
+    /// ring product is only exact modulo 2^MODULUS_Q_BITS (the SABER coefficient
+    /// modulus), because the interpolation right-shift divisions lose the top
+    /// bits. On other targets (scalar Karatsuba or NEON Karatsuba), the result
+    /// is exact mod 2^16.
+    #[cfg(all(feature = "avx2", target_arch = "x86_64"))]
+    fn assert_ring_eq(a: &RingElem, b: &RingElem) {
+        let mask = (1u16 << crate::consts::MODULUS_Q_BITS) - 1;
+        for i in 0..RING_DEG {
+            assert_eq!(
+                a.0[i] & mask,
+                b.0[i] & mask,
+                "ring mismatch at index {i}: {} vs {}",
+                a.0[i],
+                b.0[i],
+            );
+        }
+    }
+
+    #[cfg(not(all(feature = "avx2", target_arch = "x86_64")))]
+    fn assert_ring_eq(a: &RingElem, b: &RingElem) {
+        assert_eq!(a, b);
+    }
+
     // Checks that a * b == b * a and a + b == b + a for ring elements a, b
     #[test]
     fn commutativity() {
@@ -351,7 +375,7 @@ mod test {
             let reference = reference_schoolbook_ring_mul(&a, &b);
             let optimized = &a * &b;
 
-            assert_eq!(reference, optimized);
+            assert_ring_eq(&reference, &optimized);
         }
     }
 

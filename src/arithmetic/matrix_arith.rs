@@ -160,6 +160,30 @@ impl<'a, const X: usize, const Y: usize> core::ops::Add<&'a Matrix<X, Y>> for &'
 mod test {
     use super::*;
 
+    /// Compare two matrices element-wise. When using the AVX2 Toom-Cook 4-way
+    /// ring multiplication, the product is only exact modulo 2^MODULUS_Q_BITS.
+    fn assert_matrix_eq<const X: usize, const Y: usize>(a: &Matrix<X, Y>, b: &Matrix<X, Y>) {
+        #[cfg(all(feature = "avx2", target_arch = "x86_64"))]
+        {
+            let mask = (1u16 << crate::consts::MODULUS_Q_BITS) - 1;
+            for i in 0..X {
+                for j in 0..Y {
+                    for k in 0..RING_DEG {
+                        assert_eq!(
+                            a.0[i][j].0[k] & mask,
+                            b.0[i][j].0[k] & mask,
+                            "matrix mismatch at [{i}][{j}].0[{k}]: {} vs {}",
+                            a.0[i][j].0[k],
+                            b.0[i][j].0[k],
+                        );
+                    }
+                }
+            }
+        }
+        #[cfg(not(all(feature = "avx2", target_arch = "x86_64")))]
+        assert_eq!(a, b);
+    }
+
     // Checks that mul and mul_transpose distribute over addition on the RHS
     #[test]
     fn distributivity() {
@@ -177,7 +201,7 @@ mod test {
             mat.mul_transpose(&vec_sum)
         };
         let prod2 = &mat.mul_transpose(&vec1) + &mat.mul_transpose(&vec2);
-        assert_eq!(prod1, prod2);
+        assert_matrix_eq(&prod1, &prod2);
 
         // Now do the same with mul
         let vec1 = Matrix::<Y, 1>::rand(&mut rng);
@@ -187,7 +211,7 @@ mod test {
             mat.mul(&vec_sum)
         };
         let prod2 = &mat.mul(&vec1) + &mat.mul(&vec2);
-        assert_eq!(prod1, prod2);
+        assert_matrix_eq(&prod1, &prod2);
     }
 
     // Checks that mul, mul_transpose, and transpose are consistent with each other
