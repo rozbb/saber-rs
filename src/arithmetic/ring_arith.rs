@@ -52,7 +52,6 @@ impl RingElem {
     // Algorithm 8, ShiftRight
     /// Right-shifts each coefficient by the specified amount, essentially dividing each coeff by a
     /// power of two with rounding
-    #[allow(dead_code)]
     pub(crate) fn shift_right(&mut self, shift: usize) {
         for coeff in self.0.iter_mut() {
             *coeff >>= shift;
@@ -69,19 +68,9 @@ impl RingElem {
     }
 
     /// Adds a given value to all coefficients
-    #[allow(dead_code)]
     pub(crate) fn wrapping_add_to_all(&mut self, val: u16) {
         for coeff in self.0.iter_mut() {
             *coeff = coeff.wrapping_add(val);
-        }
-    }
-
-    /// Fused add-then-shift: adds `val` to each coefficient, then right-shifts by `shift`.
-    /// Equivalent to `wrapping_add_to_all(val)` followed by `shift_right(shift)`, but in a
-    /// single pass over the coefficients to halve memory traffic.
-    pub(crate) fn wrapping_add_and_shift_right(&mut self, val: u16, shift: usize) {
-        for coeff in self.0.iter_mut() {
-            *coeff = coeff.wrapping_add(val) >> shift;
         }
     }
 }
