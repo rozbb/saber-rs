@@ -10,20 +10,14 @@ use sha3::{
     Shake128,
 };
 
-/// Computes the Centered Binomial Distribution directly from raw bytes.
-///
-/// Each ring coefficient is sampled from CBD(μ/2): take μ random bits, split into two halves
-/// of μ/2 bits each, and output popcount(first_half) - popcount(second_half).
-///
-/// For MU=8 (Saber), this is byte-aligned: each coefficient uses exactly 1 byte, with the
-/// low nibble as the positive half and the high nibble as the negative half.
-///
-/// For MU=6 (FireSaber) and MU=10 (LightSaber), we read MU bits at a time from the byte
-/// stream using bitwise extraction.
+/// Computes the Centered Binomial Distribution using the given bytes as randomness
 fn cbd<const MU: usize>(buf: &[u8], out: &mut RingElem) {
     let half = MU / 2;
     let mask: u32 = (1 << half) - 1;
 
+    // Special case for Saber: Each coefficient uses exactly 1 byte, with the low nibble
+    // as the positive half and the high nibble as the negative half. So we don't need a
+    // buffer to read bits
     if MU == 8 {
         // Specialized fast path for Saber (MU=8): each coefficient = one byte, no bit shifting
         for (coeff, &byte) in out.0.iter_mut().zip(buf.iter()) {
@@ -72,8 +66,6 @@ pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
         h.finalize_xof()
     };
 
-    // Output secret is a column vector (Matrix<L, 1>). We construct it directly
-    // rather than building a row vector and transposing, to avoid copying L RingElems.
     let mut secret = Matrix::default();
     // Buffer to hold XOF bytes. Can't do const math here, so we make it the max size
     // and cut it down
