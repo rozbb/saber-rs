@@ -110,17 +110,6 @@ fn schoolbook_128(out: &mut [u16; RING_DEG], a: &[u16; HALF], b: &[u16; HALF]) {
 
 /// Multiplies two ring elements using one level of Karatsuba, and **accumulates** the product
 /// into `acc`. This is the core hot function for Saber's matrix-vector multiplies.
-///
-/// We split each input into low and high 128-coefficient halves:
-///     a = a_lo + a_hi * X^128,   b = b_lo + b_hi * X^128
-/// Then use Karatsuba's identity:
-///     a*b = z0 + z1*X^128 + z2*X^256
-/// where z0 = a_lo*b_lo, z2 = a_hi*b_hi, z1 = (a_lo+a_hi)*(b_lo+b_hi) - z0 - z2.
-///
-/// Since we work in Z[X]/(X^256 + 1), X^256 = -1, so:
-///     a*b mod (X^256+1) = (z0 - z2) + z1*X^128  mod (X^256+1)
-/// And z1*X^128 wraps: coefficients 0..127 of z1 go to positions 128..255,
-/// while coefficients 128..255 of z1 wrap to positions 0..127 with a sign flip.
 pub(crate) fn ring_mul_acc(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
     // Convert slices to fixed-size array references for the schoolbook function.
     // These are infallible since we split a RING_DEG array exactly in half.
@@ -128,6 +117,17 @@ pub(crate) fn ring_mul_acc(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
     let a_hi: &[u16; HALF] = a.0[HALF..].try_into().unwrap();
     let b_lo: &[u16; HALF] = b.0[..HALF].try_into().unwrap();
     let b_hi: &[u16; HALF] = b.0[HALF..].try_into().unwrap();
+
+    // We split each input into low and high 128-coefficient halves:
+    //     a = a_lo + a_hi * X^128,   b = b_lo + b_hi * X^128
+    // Then use Karatsuba's identity:
+    //     a*b = z0 + z1*X^128 + z2*X^256
+    // where z0 = a_lo*b_lo, z2 = a_hi*b_hi, z3 = (a_lo+a_hi)*(b_lo+b_hi), z1 = z3 - z0 - z2.
+    //
+    // Since we work in Z[X]/(X^256 + 1), X^256 = -1, so:
+    //     a*b mod (X^256+1) = (z0 - z2) + z1*X^128  mod (X^256+1)
+    // And z1*X^128 wraps: coefficients 0..127 of z1 go to positions 128..255,
+    // while coefficients 128..255 of z1 wrap to positions 0..127 with a sign flip.
 
     // Compute the three schoolbook products into flat arrays.
     // Each is a product of two degree-127 polynomials, fitting in 256 coefficients.
@@ -146,19 +146,12 @@ pub(crate) fn ring_mul_acc(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
     let mut z3 = [0u16; RING_DEG];
     schoolbook_128(&mut z3, &a_sum, &b_sum);
 
-    // Accumulate: acc += z0 - z2 + (z3 - z0 - z2)*X^128  mod (X^256+1)
-    //
-    // We merge into two loops of HALF iterations each (instead of three loops), so each
-    // element of acc is touched exactly once. This improves cache efficiency.
-    //
-    // For acc[j] where j in 0..HALF:
-    //   - z0[j] - z2[j] from the direct terms
-    //   - -(z3[j+HALF] - z0[j+HALF] - z2[j+HALF]) from z1[j+HALF]*X^(j+256) wrapping with negation
-    // For acc[j] where j in HALF..RING_DEG:
-    //   - z0[j] - z2[j] from the direct terms
-    //   - +(z3[j-HALF] - z0[j-HALF] - z2[j-HALF]) from z1[j-HALF]*X^j (no wrap)
+    // Accumulate: acc += z0 - z2 + z1*X^128  mod (X^256+1)
+    //   where z1 = (z3 - z0 - z2)
     for j in 0..HALF {
-        // z1_wrap = z1[j+128], which wraps to position j with sign flip (X^(j+256) = -X^j)
+        // For acc[j] where j in 0..HALF:
+        //   * z0[j] - z2[j] from the direct terms
+        //   * -(z3[j+HALF] - z0[j+HALF] - z2[j+HALF]) from z1[j+HALF] wrapping with negation
         let z1_wrap = z3[j + HALF]
             .wrapping_sub(z0[j + HALF])
             .wrapping_sub(z2[j + HALF]);
@@ -166,9 +159,10 @@ pub(crate) fn ring_mul_acc(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
             .wrapping_add(z0[j])
             .wrapping_sub(z2[j])
             .wrapping_sub(z1_wrap);
-    }
-    for j in 0..HALF {
-        // z1_direct = z1[j], shifted to position j+128 (no wrap)
+
+        // For acc[j] where j in HALF..RING_DEG:
+        //   * z0[j] - z2[j] from the direct terms
+        //   * +(z3[j-HALF] - z0[j-HALF] - z2[j-HALF]) from z1[j-HALF] (no wrap)
         let z1_direct = z3[j].wrapping_sub(z0[j]).wrapping_sub(z2[j]);
         acc.0[j + HALF] = acc.0[j + HALF]
             .wrapping_add(z0[j + HALF])
