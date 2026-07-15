@@ -99,25 +99,11 @@ macro_rules! variant_impl {
                     rng: &mut impl CryptoRng,
                 ) -> ($ciphertext_name, SharedSecret) {
                     let mut ct = [0u8; $ciphertext_len_name];
-                    let ss = self.encapsulate_in_place(rng, &mut ct);
-                    (ct, ss)
-                }
-            }
+                    let ss = crate::kem::encap::<$variant_ell, $variant_mu, $variant_modt_bits>(
+                        rng, &self.0, &mut ct,
+                    );
 
-            impl $pubkey_name {
-                /// Encapsulates a fresh shared secret and place the ciphertext in the given
-                /// buffer
-                pub fn encapsulate_in_place(
-                    &self,
-                    rng: &mut impl CryptoRng,
-                    ct_out: &mut $ciphertext_name,
-                ) -> SharedSecret {
-                    let shared_secret =
-                        crate::kem::encap::<$variant_ell, $variant_mu, $variant_modt_bits>(
-                            rng, &self.0, ct_out,
-                        );
-
-                    SharedSecret(shared_secret)
+                    (ct, SharedSecret(ss))
                 }
             }
 

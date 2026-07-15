@@ -18,8 +18,9 @@ Example code
 The following code can be found in [`examples/simple.rs`](examples/simple.rs).
 
 ```rust
-use kopis_kem::kopis512::{
-    Kopis512Ciphertext, Kopis512PublicKey, Kopis512SecretKey, KOPIS512_CIPHERTEXT_LEN,
+use kopis_kem::{
+    kopis512::{Kopis512Ciphertext, Kopis512PublicKey, Kopis512SecretKey, KOPIS512_CIPHERTEXT_LEN},
+    SharedSecret
 };
 
 let mut rng = rand::rng();
@@ -38,24 +39,20 @@ let sk = Kopis512SecretKey::expand_from_seed(&sk_seed);
 let mut pk_bytes = [0u8; Kopis512PublicKey::SERIALIZED_LEN];
 pk.serialize(&mut pk_bytes);
 let slice_containing_pk = pk_bytes.as_slice();
-// The API only accepts fixed-len slices, so we have to cast it first
 assert_eq!(
     slice_containing_pk.len(),
     Kopis512PublicKey::SERIALIZED_LEN
 );
 let pk_arr = slice_containing_pk.try_into().unwrap();
+// The API only accepts fixed-len slices, so we have to cast it first
 let pk = Kopis512PublicKey::from_bytes(pk_arr);
 
 // Encapsulate a shared secret, ss1, to pk
-let (_ct, _ss1) = pk.encapsulate(&mut rng);
-// Alternatively, if you have a buffer and want to avoid an extra allocation, encapsulate in
-// place. Kopis512Ciphertext is just a byte array, so no conversion necessary:
-let mut ct = [0u8; KOPIS512_CIPHERTEXT_LEN];
-let ss1 = pk.encapsulate_in_place(&mut rng, &mut ct);
-let slice_containing_ct = ct.as_slice();
+let (ct, ss1): (Kopis512Ciphertext, SharedSecret) = pk.encapsulate(&mut rng);
+// Note ct is just a [u8; KOPIS512_CIPHERTEXT_LEN]
 
 // Deserializing is also straightforward
-assert_eq!(slice_containing_ct.len(), KOPIS512_CIPHERTEXT_LEN);
+let slice_containing_ct = ct.as_slice();
 let receiver_ct: &Kopis512Ciphertext = slice_containing_ct.try_into().unwrap();
 
 // Use the secret key to decapsulate the ciphertext

@@ -1,5 +1,6 @@
-use kopis_kem::kopis512::{
-    Kopis512Ciphertext, Kopis512PublicKey, Kopis512SecretKey, KOPIS512_CIPHERTEXT_LEN,
+use kopis_kem::{
+    kopis512::{Kopis512Ciphertext, Kopis512PublicKey, Kopis512SecretKey, KOPIS512_CIPHERTEXT_LEN},
+    SharedSecret,
 };
 
 fn main() {
@@ -26,11 +27,7 @@ fn main() {
     let pk = Kopis512PublicKey::from_bytes(pk_arr);
 
     // Encapsulate a shared secret, ss1, to pk
-    let (_ct, _ss1) = pk.encapsulate(&mut rng);
-    // Alternatively, if you have a buffer and want to avoid an extra allocation, encapsulate in
-    // place. Kopis512Ciphertext is just a byte array, so no conversion necessary:
-    let mut ct = [0u8; KOPIS512_CIPHERTEXT_LEN];
-    let ss1 = pk.encapsulate_in_place(&mut rng, &mut ct);
+    let (ct, ss1): (Kopis512Ciphertext, SharedSecret) = pk.encapsulate(&mut rng);
     let slice_containing_ct = ct.as_slice();
 
     // Deserializing is also straightforward
