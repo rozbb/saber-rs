@@ -89,11 +89,10 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
         }
     }
 
-    // Algorithm 12, POLVECN2BS
     /// Serializes this matrix, ring element by ring element, treating each ring element
     /// coefficient as having only `bits_per_elem` bits. In Saber terms, this runs POLYVECk2BS
     /// where k = bits_per_elem
-    pub(crate) fn to_bytes(&self, out_buf: &mut [u8], bits_per_elem: usize) {
+    pub(crate) fn serialize(&self, out_buf: &mut [u8], bits_per_elem: usize) {
         assert_eq!(out_buf.len(), X * Y * bits_per_elem * RING_DEG / 8);
 
         let mut chunk_iter = out_buf.chunks_mut(bits_per_elem * RING_DEG / 8);
@@ -102,12 +101,11 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
                 let out_chunk = chunk_iter
                     .next()
                     .expect("length check at beginning ensures X*Y many chunks");
-                entry.to_bytes(out_chunk, bits_per_elem);
+                entry.serialize(out_chunk, bits_per_elem);
             }
         }
     }
 
-    // Algorithm 11, BS2POLVECN
     /// Deserializes a matrix, ring element by ring element, treating each ring element coefficient
     /// as having only `bits_per_elem` bits. In Saber terms, this runs BS2POLYVECk where k =
     /// bits_per_elem

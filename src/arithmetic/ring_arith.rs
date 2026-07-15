@@ -44,7 +44,7 @@ impl RingElem {
 
     /// Serializes this ring element, treating each coefficient as having only `bits_per_elem`
     /// bits. In Saber terms, this runs POLYk2BS where k = bits_per_elem
-    pub(crate) fn to_bytes(&self, out_buf: &mut [u8], bits_per_elem: usize) {
+    pub(crate) fn serialize(&self, out_buf: &mut [u8], bits_per_elem: usize) {
         assert_eq!(out_buf.len(), bits_per_elem * RING_DEG / 8);
         serialize(&self.0, out_buf, bits_per_elem)
     }
@@ -110,6 +110,9 @@ fn schoolbook_128(out: &mut [u16; RING_DEG], a: &[u16; HALF], b: &[u16; HALF]) {
 
 /// Multiplies two ring elements using one level of Karatsuba, and **accumulates** the product
 /// into `acc`. This is the core hot function for Saber's matrix-vector multiplies.
+#[allow(clippy::unwrap_used)]
+// We use unwrap to split the slices. Once it's stable we should use split_array_ref()
+//   https://doc.rust-lang.org/std/primitive.array.html#method.split_array_ref
 pub(crate) fn ring_mul_acc(acc: &mut RingElem, a: &RingElem, b: &RingElem) {
     // Convert slices to fixed-size array references for the schoolbook function.
     // These are infallible since we split a RING_DEG array exactly in half.
@@ -304,7 +307,7 @@ mod test {
             let elem = RingElem::rand(&mut rng);
             let my_bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
             let ref_bytes = &mut backing_buf2[..bits_per_elem * RING_DEG / 8];
-            elem.to_bytes(my_bytes, bits_per_elem);
+            elem.serialize(my_bytes, bits_per_elem);
             reference_impl_to_bytes_mod8192(&elem, ref_bytes);
             assert_eq!(my_bytes, ref_bytes);
 
@@ -330,7 +333,7 @@ mod test {
             backing_buf2.fill(0);
             let my_bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
             let ref_bytes = &mut backing_buf2[..bits_per_elem * RING_DEG / 8];
-            elem.to_bytes(my_bytes, bits_per_elem);
+            elem.serialize(my_bytes, bits_per_elem);
             reference_impl_to_bytes_mod2(&elem, ref_bytes);
             assert_eq!(my_bytes, ref_bytes);
 
@@ -347,7 +350,7 @@ mod test {
 
                 // Check that a round trip preserves the polynomial
                 let p_bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
-                p.to_bytes(p_bytes, bits_per_elem);
+                p.serialize(p_bytes, bits_per_elem);
                 assert_eq!(p, RingElem::from_bytes(&p_bytes, bits_per_elem));
 
                 // Now other way around
@@ -355,7 +358,7 @@ mod test {
                 rng.fill_bytes(p_bytes);
                 let p = RingElem::from_bytes(&p_bytes, bits_per_elem);
                 let new_p_bytes = &mut backing_buf2[..bits_per_elem * RING_DEG / 8];
-                p.to_bytes(new_p_bytes, bits_per_elem);
+                p.serialize(new_p_bytes, bits_per_elem);
                 assert_eq!(p_bytes, new_p_bytes);
             }
         }
