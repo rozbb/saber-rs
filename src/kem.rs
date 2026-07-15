@@ -1,7 +1,7 @@
 //! This file implements the IND-CCA-secure Kopis KEM scheme
 
 use crate::{
-    consts::{DOMSEP_FO, DOMSEP_NOREJECT, DOMSEP_PKHASH},
+    consts::{DOMSEP_FO, DOMSEP_NOREJECT},
     pke::{self, ciphertext_len, expand_decap_key, max_ciphertext_len, PkePublicKey, PkeSecretKey},
     turboshake256_hash,
 };
@@ -30,8 +30,7 @@ impl<const L: usize> KemPublicKey<L> {
     /// Deserializes from `pke_pk`, and recomputes `hash_pke_pk`
     pub(crate) fn from_bytes(bytes: &[u8]) -> Self {
         let pke_pk = PkePublicKey::from_bytes(bytes);
-        // Recompute the hash: pkh = TurboSHAKE256(pk, 32, DOMSEP_PKHASH)
-        let hash_pke_pk = turboshake256_hash::<DOMSEP_PKHASH>(&[bytes]);
+        let hash_pke_pk = pke_pk.hash();
 
         KemPublicKey {
             pke_pk,
@@ -180,7 +179,6 @@ pub fn decap<const L: usize, const MU: usize, const T: usize>(
 mod test {
     use super::*;
     use crate::consts::*;
-    use crate::pke::max_pke_pubkey_serialized_len;
 
     use rand::Rng;
 
@@ -249,13 +247,7 @@ mod test {
         kem_pk: &KemPublicKey<L>,
     ) -> SharedSecret {
         // Recompute pkh
-        let hash_pke_pk = {
-            let mut buf = [0u8; max_pke_pubkey_serialized_len()];
-            let pk_bytes = &mut buf[..PkePublicKey::<L>::SERIALIZED_LEN];
-            kem_pk.to_bytes(pk_bytes);
-
-            turboshake256_hash::<DOMSEP_PKHASH>(&[pk_bytes])
-        };
+        let hash_pke_pk = kem_pk.pke_pk.hash();
 
         // k || r = TurboSHAKE256(randomness || pkh, 64, DOMSEP_FO)
         let mut k = [0u8; 32];

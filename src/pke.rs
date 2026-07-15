@@ -21,7 +21,7 @@ pub(crate) struct PkeSecretKey<const L: usize>(Matrix<L, 1>);
 /// A public key for the IND-CPA-secure Kopis PKE scheme
 #[derive(Clone)]
 pub struct PkePublicKey<const L: usize> {
-    seed: [u8; 32],
+    matrix_seed: [u8; 32],
     vec: Matrix<L, 1>,
 }
 
@@ -37,7 +37,7 @@ impl<const L: usize> PkePublicKey<L> {
         self.vec
             .to_bytes(&mut out_buf[..out_size - 32], MODULUS_P_BITS);
         // Write out the pubkey seed
-        out_buf[out_size - 32..].copy_from_slice(&self.seed);
+        out_buf[out_size - 32..].copy_from_slice(&self.matrix_seed);
     }
 
     pub(crate) fn from_bytes(bytes: &[u8]) -> Self {
@@ -46,9 +46,18 @@ impl<const L: usize> PkePublicKey<L> {
         let (vec_bytes, seed) = bytes.split_at(Self::SERIALIZED_LEN - 32);
         let vec = Matrix::from_bytes(vec_bytes, MODULUS_P_BITS);
         Self {
-            seed: seed.try_into().expect("split_at(N-32).1 has len 32"),
+            matrix_seed: seed.try_into().expect("split_at(N-32).1 has len 32"),
             vec,
         }
+    }
+
+    /// Returns the public key hash
+    pub(crate) fn hash(&self) -> [u8; 32] {
+        // pkh = TurboSHAKE256(pk, 32, DOMSEP_PKHASH)
+        let mut buf = [0u8; max_pke_pubkey_serialized_len()];
+        let pk_slice = &mut buf[..PkePublicKey::<L>::SERIALIZED_LEN];
+        self.to_bytes(pk_slice);
+        turboshake256_hash::<DOMSEP_PKHASH>(&[pk_slice])
     }
 }
 
@@ -108,18 +117,10 @@ pub(crate) fn expand_decap_key<const L: usize, const MU: usize>(
     };
 
     let pk = PkePublicKey {
-        seed: mat_seed,
+        matrix_seed: mat_seed,
         vec: b,
     };
-
-    // pkh = TurboSHAKE256(pk, 32, DOMSEP_PKHASH)
-    let pkh = {
-        let mut buf = [0u8; max_pke_pubkey_serialized_len()];
-        let pk_slice = &mut buf[..PkePublicKey::<L>::SERIALIZED_LEN];
-        pk.to_bytes(pk_slice);
-
-        turboshake256_hash::<DOMSEP_PKHASH>(&[pk_slice])
-    };
+    let pkh = pk.hash();
 
     (PkeSecretKey(vec_s), z, pk, pkh)
 }
@@ -164,7 +165,7 @@ pub(crate) fn encrypt_deterministic<const L: usize, const MU: usize, const T: us
 ) {
     assert_eq!(out_buf.len(), ciphertext_len::<L, T>());
 
-    let mat_a = gen_matrix_from_seed::<L>(&pk.seed);
+    let mat_a = gen_matrix_from_seed::<L>(&pk.matrix_seed);
     let vec_sprime = gen_secret_from_seed::<L, MU>(coins);
 
     let bprime = {
