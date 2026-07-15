@@ -62,7 +62,7 @@ pub struct KemSecretKey<const L: usize> {
 
 impl<const L: usize> KemSecretKey<L> {
     /// Construct a secret key from a 32-byte seed by expanding it via `ExpandDecapKey`.
-    pub fn from_bytes<const MU: usize>(seed: &[u8; 32]) -> KemSecretKey<L> {
+    pub fn expand_from_seed<const MU: usize>(seed: &[u8; 32]) -> KemSecretKey<L> {
         let (pke_sk, z, pke_pk, hash_pke_pk) = expand_decap_key::<L, MU>(seed);
 
         KemSecretKey {
@@ -78,11 +78,11 @@ impl<const L: usize> KemSecretKey<L> {
     pub fn generate<const MU: usize>(rng: &mut impl CryptoRng) -> KemSecretKey<L> {
         let mut seed = [0u8; 32];
         rng.fill_bytes(&mut seed);
-        Self::from_bytes::<MU>(&seed)
+        Self::expand_from_seed::<MU>(&seed)
     }
 
-    /// Serialize this secret key to bytes. The secret key is just the 32-byte seed.
-    pub fn to_bytes(&self) -> [u8; 32] {
+    /// Returns the seed that produced this secret key
+    pub fn seed(&self) -> [u8; 32] {
         self.seed
     }
 

@@ -10,11 +10,11 @@ fn main() {
     let pk = sk.public_key();
 
     // Serialize the secret key, maybe to save on disk
-    let sk_bytes = sk.to_bytes();
+    let sk_seed = sk.seed();
 
     // Deserialize the secret key
     // The API only accepts fixed-len slices, so we have to cast it first
-    let sk = Kopis512SecretKey::from_bytes(&sk_bytes);
+    let sk = Kopis512SecretKey::expand_from_seed(&sk_seed);
 
     // Also serialize and deserialize the public key
     let mut pk_bytes = [0u8; Kopis512PublicKey::SERIALIZED_LEN];
