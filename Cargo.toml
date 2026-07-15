@@ -1,5 +1,5 @@
 [package]
-name = "saber_kem"
+name = "kopis_kem"
 authors = ["Michael Rosenberg <michael@mrosenberg.pub>"]
 license = "MIT/Apache-2.0"
 version = "0.1.0"
@@ -9,7 +9,7 @@ categories = ["cryptography", "no-std"]
 
 [dependencies]
 rand_core = "0.9"
-sha3 = { version = "0.10", default-features = false }
+turboshake = { version = "0.7", default-features = false }
 subtle = { version = "2.6", default-features = false, features = [
     "const-generics",
 ] }
@@ -18,14 +18,9 @@ zeroize = { version = "1", default-features = false, features = ["derive"] }
 [dev-dependencies]
 rand = "0.9"
 criterion = "0.5"
-aes_ctr_drbg = "0.0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hex = "0.4"
-
-[features]
-default = ["asm"]
-asm = ["sha3/asm"]
 
 [[bench]]
 name = "all"

@@ -1,29 +1,16 @@
-saber_kem
+kopis_kem
 =========
 
-This crate is a pure-Rust, no-std implementation of [draft 3](https://www.esat.kuleuven.be/cosic/pqcrypto/saber/files/saberspecround3.pdf) of the Saber key encapsulation mechanism (KEM). Saber is a lattice-based KEM that is designed to be secure against classical and quantum adversaries. It comes three variants:
+This crate is a pure-Rust, no-std implementation of the Kopis key encapsulation mechanism (KEM). Kopis is a lattice-based KEM that is designed to be secure against classical and quantum adversaries. It comes in three variants:
 
-* LightSaber, which is designed to have security roughly equivalent to AES-128
-* Saber, which is designed to have security roughly equivalent to AES-192
-* FireSaber, which is designed to have security roughly equivalent to AES-256
+* Kopis-512, which is designed to have security roughly equivalent to AES-128
+* Kopis-768, which is designed to have security roughly equivalent to AES-192
+* Kopis-1024, which is designed to have security roughly equivalent to AES-256
 
 Warning
 -------
 
 This crate has not been audited in any sense of the word. Use at your own risk.
-
-Why Saber?
-----------
-
-In general, if you are looking to use a post-quantum KEM and have no other requirements, you should use ML-KEM (aka "Kyber", its pre-standardization name), since it is faster and more standardized than Saber. However, Saber has two small benefits over Kyber:
-
-* All Saber public keys and ciphertexts pack perfectly into bytes. So if you need to perform a keyed permutation on a KEM's public keys, as is required in some ideal-cipher-based constructions such as [CAKE](https://eprint.iacr.org/2023/470), you can simply use a wide-block cipher over a serialized Saber public key. In comparison Kyber requires you to define a permutation over arrays of mod-q values (note: Kyber public keys actually can be compressed to pack into bytes, but nobody has proven it secure; Theorem 2 of the [original paper](https://eprint.iacr.org/2017/634) only considers the uncompressed scheme).
-* Relatedly, all Saber arithmetic is modulo a power of two, which is extremely simple for CPUs to work with. Arithmetic modulo a prime can yield much faster computations, but it can also cause accidental timing leaks due to compilers being too smart. Such vulnerabilities have affected [Kyber](https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/hqbtIGFKIpU/m/cnE3pbueBgAJ) and [curve25519](https://rustsec.org/advisories/RUSTSEC-2024-0344.html). I don't claim any of these other projects are insecure, just that this is a specific issue they must contend with going forward, that Saber does not have to.
-
-Compatibility
--------------
-
-This crate is compatible with Saber's [C reference implementation](https://github.com/KULeuven-COSIC/SABER/tree/f7f39e4db2f3e22a21e1dd635e0601caae2b4510). Known-answer tests (KATs) test vectors can be found in [`tests/`](tests/). Test vectors were taken directly from the previously linked repo, and converted to JSON using [`tests/convert_rsp_to_json.py`](tests/convert_rsp_to_json.py).
 
 Example code
 ------------
@@ -31,53 +18,45 @@ Example code
 The following code can be found in [`examples/simple.rs`](examples/simple.rs).
 
 ```rust
-use saber_kem::lightsaber::{
-    LightsaberCiphertext, LightsaberPublicKey, LightsaberSecretKey, LIGHTSABER_CIPHERTEXT_LEN,
+use kopis_kem::kopis512::{
+    Kopis512Ciphertext, Kopis512PublicKey, Kopis512SecretKey, KOPIS512_CIPHERTEXT_LEN,
 };
 
 let mut rng = rand::rng();
 
 // Generate a keypair
-let sk = LightsaberSecretKey::generate(&mut rng);
+let sk = Kopis512SecretKey::generate(&mut rng);
 let pk = sk.public_key();
 
 // Serialize the secret key, maybe to save on disk
-let mut sk_bytes = [0u8; LightsaberSecretKey::SERIALIZED_LEN];
-sk.to_bytes(&mut sk_bytes);
-let slice_containing_sk = sk_bytes.as_slice();
+let sk_bytes: [u8; 32] = sk.to_bytes();
 
 // Deserialize the secret key
-// The API only accepts fixed-len slices, so we have to cast it first
-assert_eq!(
-    slice_containing_sk.len(),
-    LightsaberSecretKey::SERIALIZED_LEN
-);
-let sk_arr = slice_containing_sk.try_into().unwrap();
-let sk = LightsaberSecretKey::from_bytes(sk_arr);
+let sk = Kopis512SecretKey::from_bytes(&sk_bytes);
 
 // Also serialize and deserialize the public key
-let mut pk_bytes = [0u8; LightsaberPublicKey::SERIALIZED_LEN];
+let mut pk_bytes = [0u8; Kopis512PublicKey::SERIALIZED_LEN];
 pk.to_bytes(&mut pk_bytes);
 let slice_containing_pk = pk_bytes.as_slice();
 // The API only accepts fixed-len slices, so we have to cast it first
 assert_eq!(
     slice_containing_pk.len(),
-    LightsaberPublicKey::SERIALIZED_LEN
+    Kopis512PublicKey::SERIALIZED_LEN
 );
 let pk_arr = slice_containing_pk.try_into().unwrap();
-let pk = LightsaberPublicKey::from_bytes(pk_arr);
+let pk = Kopis512PublicKey::from_bytes(pk_arr);
 
 // Encapsulate a shared secret, ss1, to pk
 let (_ct, _ss1) = pk.encapsulate(&mut rng);
 // Alternatively, if you have a buffer and want to avoid an extra allocation, encapsulate in
-// place. LightSaberCiphertext is just a byte array, so no conversion necessary:
-let mut ct = [0u8; LIGHTSABER_CIPHERTEXT_LEN];
+// place. Kopis512Ciphertext is just a byte array, so no conversion necessary:
+let mut ct = [0u8; KOPIS512_CIPHERTEXT_LEN];
 let ss1 = pk.encapsulate_in_place(&mut rng, &mut ct);
 let slice_containing_ct = ct.as_slice();
 
 // Deserializing is also straightforward
-assert_eq!(slice_containing_ct.len(), LIGHTSABER_CIPHERTEXT_LEN);
-let receiver_ct: &LightsaberCiphertext = slice_containing_ct.try_into().unwrap();
+assert_eq!(slice_containing_ct.len(), KOPIS512_CIPHERTEXT_LEN);
+let receiver_ct: &Kopis512Ciphertext = slice_containing_ct.try_into().unwrap();
 
 // Use the secret key to decapsulate the ciphertext
 let ss2 = sk.decapsulate(receiver_ct);

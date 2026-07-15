@@ -1,5 +1,5 @@
-use saber_kem::{
-    firesaber::FiresaberSecretKey, lightsaber::LightsaberSecretKey, saber::SaberSecretKey,
+use kopis_kem::{
+    kopis1024::Kopis1024SecretKey, kopis512::Kopis512SecretKey, kopis768::Kopis768SecretKey,
 };
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -26,9 +26,9 @@ macro_rules! bench_variant {
     };
 }
 
-bench_variant!(lightsaber, LightsaberSecretKey);
-bench_variant!(saber, SaberSecretKey);
-bench_variant!(firesaber, FiresaberSecretKey);
+bench_variant!(kopis512, Kopis512SecretKey);
+bench_variant!(kopis768, Kopis768SecretKey);
+bench_variant!(kopis1024, Kopis1024SecretKey);
 
-criterion_group!(benches, lightsaber, saber, firesaber);
+criterion_group!(benches, kopis512, kopis768, kopis1024);
 criterion_main!(benches);

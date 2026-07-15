@@ -22,7 +22,7 @@ impl SharedSecret {
     }
 }
 
-/// Defines convenience types and impls for a given Saber variant
+/// Defines convenience types and impls for a given Kopis variant
 macro_rules! variant_impl {
     (
         $variant_name:ident,
@@ -56,22 +56,19 @@ macro_rules! variant_impl {
             pub type $ciphertext_name = [u8; $ciphertext_len_name];
 
             impl $privkey_name {
-                /// The length of the secret key when serialized to bytes
-                pub const SERIALIZED_LEN: usize = KemSecretKey::<$variant_ell>::SERIALIZED_LEN;
-
                 /// Generate a fresh secret key
                 pub fn generate(rng: &mut impl CryptoRng) -> Self {
                     Self(KemSecretKey::generate::<$variant_mu>(rng))
                 }
 
-                /// Serializes this secret key into `out_buf`, of length `Self::SERIALIZED_LEN`
-                pub fn to_bytes(&self, out_buf: &mut [u8; Self::SERIALIZED_LEN]) {
-                    self.0.to_bytes(out_buf);
+                /// Serializes this secret key into `out_buf` (32-byte seed)
+                pub fn to_bytes(&self) -> [u8; 32] {
+                    self.0.to_bytes()
                 }
 
-                /// Deserializes a secret key from `bytes`, of length `Self::SERIALIZED_LEN`
-                pub fn from_bytes(bytes: &[u8; Self::SERIALIZED_LEN]) -> Self {
-                    Self(KemSecretKey::from_bytes(bytes))
+                /// Deserializes a secret key from a 32-byte seed
+                pub fn from_bytes(bytes: &[u8; 32]) -> Self {
+                    Self(KemSecretKey::from_bytes::<$variant_mu>(bytes))
                 }
 
                 /// Returns the public key corresponding to this secret key
@@ -126,7 +123,7 @@ macro_rules! variant_impl {
 
             impl $privkey_name {
                 /// Decapsulates an encapsulated key and returns the resulting shared secret. If
-                /// the encapsulated key is invalid, then the shared secret will be psuedorandom
+                /// the encapsulated key is invalid, then the shared secret will be pseudorandom
                 /// garbage.
                 pub fn decapsulate(&self, encapsulated_key: &$ciphertext_name) -> SharedSecret {
                     SharedSecret(crate::kem::decap::<
@@ -145,8 +142,7 @@ macro_rules! variant_impl {
                 let pk = sk.public_key();
 
                 // Serialize and deserialize the keys
-                let mut sk_bytes = [0u8; $privkey_name::SERIALIZED_LEN];
-                sk.to_bytes(&mut sk_bytes);
+                let sk_bytes = sk.to_bytes();
                 let sk = $privkey_name::from_bytes(&sk_bytes);
 
                 let mut pk_bytes = [0u8; $pubkey_name::SERIALIZED_LEN];
@@ -166,37 +162,37 @@ macro_rules! variant_impl {
 }
 
 variant_impl!(
-    lightsaber,
-    "LightSaber is designed to have security close to that of AES-128",
-    LightsaberPublicKey,
-    LightsaberSecretKey,
-    LightsaberCiphertext,
-    LIGHTSABER_CIPHERTEXT_LEN,
-    LIGHTSABER_L,
-    LIGHTSABER_MU,
-    LIGHTSABER_MODULUS_T_BITS
+    kopis512,
+    "Kopis-512 is designed to have security close to that of AES-128",
+    Kopis512PublicKey,
+    Kopis512SecretKey,
+    Kopis512Ciphertext,
+    KOPIS512_CIPHERTEXT_LEN,
+    KOPIS512_L,
+    KOPIS512_MU,
+    KOPIS512_T
 );
 
 variant_impl!(
-    saber,
-    "Saber is designed to have security close to that of AES-192",
-    SaberPublicKey,
-    SaberSecretKey,
-    SaberCiphertext,
-    SABER_CIPHERTEXT_LEN,
-    SABER_L,
-    SABER_MU,
-    SABER_MODULUS_T_BITS
+    kopis768,
+    "Kopis-768 is designed to have security close to that of AES-192",
+    Kopis768PublicKey,
+    Kopis768SecretKey,
+    Kopis768Ciphertext,
+    KOPIS768_CIPHERTEXT_LEN,
+    KOPIS768_L,
+    KOPIS768_MU,
+    KOPIS768_T
 );
 
 variant_impl!(
-    firesaber,
-    "FireSaber is designed to have security close to that of AES-256",
-    FiresaberPublicKey,
-    FiresaberSecretKey,
-    FiresaberCiphertext,
-    FIRESABER_CIPHERTEXT_LEN,
-    FIRESABER_L,
-    FIRESABER_MU,
-    FIRESABER_MODULUS_T_BITS
+    kopis1024,
+    "Kopis-1024 is designed to have security close to that of AES-256",
+    Kopis1024PublicKey,
+    Kopis1024SecretKey,
+    Kopis1024Ciphertext,
+    KOPIS1024_CIPHERTEXT_LEN,
+    KOPIS1024_L,
+    KOPIS1024_MU,
+    KOPIS1024_T
 );
