@@ -82,8 +82,8 @@ macro_rules! variant_impl {
                 pub const SERIALIZED_LEN: usize = KemPublicKey::<$variant_ell>::SERIALIZED_LEN;
 
                 /// Serializes this public key into `out_buf`, of length `Self::SERIALIZED_LEN`
-                pub fn to_bytes(&self, out_buf: &mut [u8; Self::SERIALIZED_LEN]) {
-                    self.0.to_bytes(out_buf);
+                pub fn serialize(&self, out_buf: &mut [u8; Self::SERIALIZED_LEN]) {
+                    self.0.serialize(out_buf);
                 }
 
                 /// Deserializes a public key from `bytes`, of length `Self::SERIALIZED_LEN`
@@ -146,7 +146,7 @@ macro_rules! variant_impl {
                 let sk = $privkey_name::expand_from_seed(&sk_seed);
 
                 let mut pk_bytes = [0u8; $pubkey_name::SERIALIZED_LEN];
-                pk.to_bytes(&mut pk_bytes);
+                pk.serialize(&mut pk_bytes);
                 let pk = $pubkey_name::from_bytes(&pk_bytes);
 
                 let (ct, ss1) = pk.encapsulate(&mut rng);

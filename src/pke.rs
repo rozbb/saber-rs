@@ -29,7 +29,7 @@ impl<const L: usize> PkePublicKey<L> {
     pub const SERIALIZED_LEN: usize = 32 + L * MODULUS_P_BITS * RING_DEG / 8;
 
     /// Serializes this public key to a byte string. `out_buf` MUST have length SERIALIZED_LEN
-    pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
+    pub(crate) fn serialize(&self, out_buf: &mut [u8]) {
         let out_size = Self::SERIALIZED_LEN;
         assert_eq!(out_buf.len(), out_size);
 
@@ -56,7 +56,7 @@ impl<const L: usize> PkePublicKey<L> {
         // pkh = TurboSHAKE256(pk, 32, DOMSEP_PKHASH)
         let mut buf = [0u8; max_pke_pubkey_serialized_len()];
         let pk_slice = &mut buf[..PkePublicKey::<L>::SERIALIZED_LEN];
-        self.to_bytes(pk_slice);
+        self.serialize(pk_slice);
         turboshake256_hash::<DOMSEP_PKHASH>(&[pk_slice])
     }
 }

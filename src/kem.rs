@@ -23,8 +23,8 @@ impl<const L: usize> KemPublicKey<L> {
     pub(crate) const SERIALIZED_LEN: usize = PkePublicKey::<L>::SERIALIZED_LEN;
 
     /// Serializes just `pke_pk`
-    pub(crate) fn to_bytes(&self, out_buf: &mut [u8]) {
-        self.pke_pk.to_bytes(out_buf);
+    pub(crate) fn serialize(&self, out_buf: &mut [u8]) {
+        self.pke_pk.serialize(out_buf);
     }
 
     /// Deserializes from `pke_pk`, and recomputes `hash_pke_pk`

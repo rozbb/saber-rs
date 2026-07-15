@@ -36,7 +36,7 @@ let sk = Kopis512SecretKey::expand_from_seed(&sk_seed);
 
 // Also serialize and deserialize the public key
 let mut pk_bytes = [0u8; Kopis512PublicKey::SERIALIZED_LEN];
-pk.to_bytes(&mut pk_bytes);
+pk.serialize(&mut pk_bytes);
 let slice_containing_pk = pk_bytes.as_slice();
 // The API only accepts fixed-len slices, so we have to cast it first
 assert_eq!(
