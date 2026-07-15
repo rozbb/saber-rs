@@ -93,19 +93,6 @@ impl<const L: usize> KemSecretKey<L> {
     }
 }
 
-/// Encapsulate a shared secret to the given public key. Returns the shared secret.
-/// `out_buf` MUST have length `ciphertext_len::<L, T>()`.
-pub(crate) fn encap<const L: usize, const MU: usize, const T: usize>(
-    rng: &mut impl CryptoRng,
-    kem_pk: &KemPublicKey<L>,
-    out_buf: &mut [u8],
-) -> SharedSecret {
-    let mut randomness = [0u8; 32];
-    rng.fill_bytes(&mut randomness);
-
-    encap_deterministic::<L, MU, T>(&randomness, kem_pk, out_buf)
-}
-
 /// Encapsulate a shared secret to the given public key using the given `randomness`.
 /// Returns the shared secret. `out_buf` MUST have length `ciphertext_len::<L, T>()`.
 pub(crate) fn encap_deterministic<const L: usize, const MU: usize, const T: usize>(

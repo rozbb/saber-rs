@@ -98,10 +98,25 @@ macro_rules! variant_impl {
                     &self,
                     rng: &mut impl CryptoRng,
                 ) -> ($ciphertext_name, SharedSecret) {
+                    let mut randomness = [0u8; 32];
+                    rng.fill_bytes(&mut randomness);
+
+                    self.encapsulate_deterministic(&randomness)
+                }
+
+                /// Encapsulates a shared secret using the given 32-byte `randomness`. This is
+                /// deterministic given `randomness`, and is primarily useful for testing and
+                /// known-answer test (KAT) vectors.
+                pub fn encapsulate_deterministic(
+                    &self,
+                    randomness: &[u8; 32],
+                ) -> ($ciphertext_name, SharedSecret) {
                     let mut ct = [0u8; $ciphertext_len_name];
-                    let ss = crate::kem::encap::<$variant_ell, $variant_mu, $variant_modt_bits>(
-                        rng, &self.0, &mut ct,
-                    );
+                    let ss = crate::kem::encap_deterministic::<
+                        $variant_ell,
+                        $variant_mu,
+                        $variant_modt_bits,
+                    >(randomness, &self.0, &mut ct);
 
                     (ct, SharedSecret(ss))
                 }
