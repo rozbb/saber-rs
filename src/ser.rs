@@ -17,7 +17,7 @@ pub(crate) fn deserialize<const N: usize>(bytes: &[u8], bits_per_elem: usize) ->
     let mut bits_in_window: usize = 0;
     let mut byte_pos: usize = 0;
 
-    for elem in out.iter_mut() {
+    for idx in 0..N {
         // Ensure we have enough bits in the window for one element
         while bits_in_window < bits_per_elem {
             window |= (bytes[byte_pos] as u32) << bits_in_window;
@@ -26,7 +26,7 @@ pub(crate) fn deserialize<const N: usize>(bytes: &[u8], bits_per_elem: usize) ->
         }
 
         // Extract the lowest bits_per_elem bits as one element
-        *elem = (window & bitmask) as u16;
+        out[idx] = (window & bitmask) as u16;
         window >>= bits_per_elem;
         bits_in_window -= bits_per_elem;
     }

@@ -155,7 +155,7 @@ pub fn decap<const L: usize, const MU: usize, const T: usize>(
     pke::encrypt_deterministic::<L, MU, T>(&sk.pke_pk, &randomness, &rprime, reconstructed_ct);
 
     // Compute rejection value: TurboSHAKE256(z || c, 32, DOMSEP_NOREJECT)
-    let reject_val = turboshake256_hash::<DOMSEP_NOREJECT>(&[&sk.z, ciphertext]);
+    let reject_val = turboshake256_hash::<DOMSEP_NOREJECT>(&sk.z, ciphertext);
 
     // Constant-time select: return k if c == cprime, else return reject_val
     let reconstruction_matched = reconstructed_ct.ct_eq(ciphertext);

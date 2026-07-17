@@ -57,7 +57,7 @@ impl<const L: usize> PkePublicKey<L> {
         let mut buf = [0u8; max_pke_pubkey_serialized_len()];
         let pk_slice = &mut buf[..PkePublicKey::<L>::SERIALIZED_LEN];
         self.serialize(pk_slice);
-        turboshake256_hash::<DOMSEP_PKHASH>(&[pk_slice])
+        turboshake256_hash::<DOMSEP_PKHASH>(pk_slice, &[])
     }
 }
 

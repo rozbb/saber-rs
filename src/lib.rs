@@ -24,13 +24,15 @@ use turboshake::{
     CTurboShake256,
 };
 
-/// Helper function that computes the 32-bytes digest the concatenation of the given
-/// inputs using TurboSHAKE256 with the given domain separator `DS`
-pub(crate) fn turboshake256_hash<const DS: u8>(input: &[&[u8]]) -> [u8; 32] {
+/// Helper function that computes the 32-bytes digest of the concatenation of the given inputs
+/// using TurboSHAKE256 with the given domain separator `DS` Pass an empty slice for `input1` to
+/// hash a single input.
+// Note: we cannot take a `&[&[u8]]` because that's a nested borrow, which aeneas doesn't support
+// yet.
+pub(crate) fn turboshake256_hash<const DS: u8>(input0: &[u8], input1: &[u8]) -> [u8; 32] {
     let mut hasher = CTurboShake256::<DS>::default();
-    for chunk in input {
-        hasher.update(chunk);
-    }
+    hasher.update(input0);
+    hasher.update(input1);
 
     let mut out = [0u8; 32];
     let mut reader = hasher.finalize_xof();

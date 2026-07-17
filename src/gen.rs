@@ -18,10 +18,10 @@ fn cbd<const MU: usize>(buf: &[u8], out: &mut RingElem) {
     // buffer to read bits
     if MU == 8 {
         // Specialized fast path for Kopis-768 (MU=8): each coefficient = one byte, no bit shifting
-        for (coeff, &byte) in out.0.iter_mut().zip(buf.iter()) {
+        for (i, &byte) in buf.iter().enumerate() {
             let a = (byte & 0x0F).count_ones() as u16;
             let b = (byte >> 4).count_ones() as u16;
-            *coeff = a.wrapping_sub(b);
+            out.0[i] = a.wrapping_sub(b);
         }
     } else {
         // General path for MU=6 (Kopis-1024) and MU=10 (Kopis-512).
@@ -63,13 +63,13 @@ pub(crate) fn gen_secret_from_seed<const L: usize, const MU: usize>(
     let buf = &mut backing_buf[..RING_DEG * MU / 8];
 
     // Sample the secret using the Centered Binomial Distribution
-    for (i, row) in secret.0.iter_mut().enumerate() {
+    for i in 0..L {
         let mut hasher = CTurboShake256::<DOMSEP_GENSEC>::default();
         hasher.update(seed);
         hasher.update(&[i as u8]);
         let mut reader = hasher.finalize_xof();
         reader.read(buf);
-        cbd::<MU>(buf, &mut row[0]);
+        cbd::<MU>(buf, &mut secret.0[i][0]);
     }
 
     secret
@@ -85,15 +85,15 @@ pub(crate) fn gen_matrix_from_seed<const L: usize>(seed: &[u8; 32]) -> Matrix<L,
     let mut buf = [0u8; RING_DEG * MODULUS_Q_BITS / 8];
 
     // Construct the matrix entries
-    for (i, row) in mat.0.iter_mut().enumerate() {
-        for (j, p) in row.iter_mut().enumerate() {
+    for i in 0..L {
+        for j in 0..L {
             let mut hasher = CTurboShake128::<DOMSEP_GENMAT>::default();
             hasher.update(seed);
             hasher.update(&[i as u8]);
             hasher.update(&[j as u8]);
             let mut reader = hasher.finalize_xof();
             reader.read(&mut buf);
-            *p = RingElem::from_bytes(&buf, MODULUS_Q_BITS);
+            mat.0[i][j] = RingElem::from_bytes(&buf, MODULUS_Q_BITS);
         }
     }
 

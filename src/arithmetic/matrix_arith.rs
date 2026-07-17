@@ -95,6 +95,8 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     pub(crate) fn serialize(&self, out_buf: &mut [u8], bits_per_elem: usize) {
         assert_eq!(out_buf.len(), X * Y * bits_per_elem * RING_DEG / 8);
 
+        /* More idiomatic version here. We have to use explicit indices because aeneas (the Lean
+         * extractor) has a problem with some iterator patterns
         let mut chunk_iter = out_buf.chunks_mut(bits_per_elem * RING_DEG / 8);
         for row in self.0.iter() {
             for entry in row.iter() {
@@ -102,6 +104,13 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
                     .next()
                     .expect("length check at beginning ensures X*Y many chunks");
                 entry.serialize(out_chunk, bits_per_elem);
+        */
+        let chunk_len = bits_per_elem * RING_DEG / 8;
+        for i in 0..X {
+            for j in 0..Y {
+                let idx = i * Y + j;
+                let out_chunk = &mut out_buf[idx * chunk_len..(idx + 1) * chunk_len];
+                self.0[i][j].serialize(out_chunk, bits_per_elem);
             }
         }
     }
@@ -113,6 +122,8 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
         assert_eq!(bytes.len(), X * Y * bits_per_elem * RING_DEG / 8);
         let mut result = Matrix::default();
 
+        /* More idiomatic version here. We have to use explicit indices because aeneas (the Lean
+         * extractor) has a problem with some iterator patterns
         let mut chunk_iter = bytes.chunks(bits_per_elem * RING_DEG / 8);
         for row in result.0.iter_mut() {
             for entry in row.iter_mut() {
@@ -120,6 +131,15 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
                     .next()
                     .expect("length check at beginning ensures X*Y many chunks");
                 *entry = RingElem::from_bytes(chunk, bits_per_elem);
+             }
+        }
+        */
+        let chunk_len = bits_per_elem * RING_DEG / 8;
+        for i in 0..X {
+            for j in 0..Y {
+                let idx = i * Y + j;
+                let chunk = &bytes[idx * chunk_len..(idx + 1) * chunk_len];
+                result.0[i][j] = RingElem::from_bytes(chunk, bits_per_elem);
             }
         }
 
