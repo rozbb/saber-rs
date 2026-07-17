@@ -65,7 +65,31 @@ bench_kopis_variant!(kopis512, Kopis512SecretKey);
 bench_kopis_variant!(kopis768, Kopis768SecretKey);
 bench_kopis_variant!(kopis1024, Kopis1024SecretKey);
 
+fn graviolamlkem768(c: &mut Criterion) {
+    use graviola::key_agreement::mlkem768::*;
+
+    let kg_randomness = [0u8; 64];
+    let encap_randomness = [0u8; 32];
+
+    c.bench_function("graviolamlkem768-gen-kepair-derand", |b| {
+        b.iter(|| DecapKey::keygen_internal(&kg_randomness))
+    });
+
+    let sk = DecapKey::generate().unwrap();
+    let pk = sk.encapsulation_key();
+
+    c.bench_function("graviolamlkem768-encap-derand", |b| {
+        b.iter(|| pk.clone().encaps_internal(Message(encap_randomness)))
+    });
+    let (_, ct) = pk.encaps().unwrap();
+
+    c.bench_function("graviolamlkem768-decap", |b| {
+        b.iter(|| sk.decaps_internal(&ct))
+    });
+}
+
 criterion_group!(kopis_benches, kopis512, kopis768, kopis1024);
+criterion_group!(graviola_benches, graviolamlkem768);
 criterion_group!(
     libcrux_benches,
     libcruxmlkem512,
@@ -73,5 +97,4 @@ criterion_group!(
     libcruxmlkem1024
 );
 
-//criterion_main!(kopis_benches);
-criterion_main!(libcrux_benches);
+criterion_main!(kopis_benches, libcrux_benches, graviola_benches);
