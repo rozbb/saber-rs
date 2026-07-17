@@ -21,6 +21,7 @@ criterion = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hex = { version = "0.4", features = ["serde"] }
+libcrux-ml-kem = { version = "=0.0.10", features = ["mlkem512", "mlkem768", "mlkem1024"] }
 
 [[bench]]
 name = "all"
