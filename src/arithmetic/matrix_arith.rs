@@ -116,7 +116,7 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     }
 
     /// Deserializes a matrix of R10 values, element by element
-    pub(crate) fn r10s_from_bytes(bytes: &[u8]) -> Self {
+    pub(crate) fn from_bytes_r10(bytes: &[u8]) -> Self {
         debug_assert_eq!(bytes.len(), X * Y * 10 * RING_DEG / 8);
         let mut result = Matrix::default();
 

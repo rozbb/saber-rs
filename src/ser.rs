@@ -40,26 +40,6 @@ pub(crate) fn deserialize_10(bytes: &[u8; 10 * 256 / 8]) -> [u16; 256] {
     out
 }
 
-/// Fast specialization of [`deserialize`] for the 1-bit case (message encoding/decoding),
-/// where each bit of the input becomes one coefficient.
-pub(crate) fn deserialize_1(bytes: &[u8; 256 / 8]) -> [u16; 256] {
-    let mut out = [0u16; 256];
-    // 256 coeffs = 32 bytes, each byte packing 8 coefficients (one per bit).
-    for g in 0..32 {
-        let b = bytes[g] as u16;
-        let o = 8 * g;
-        out[o] = b & 0x01;
-        out[o + 1] = (b >> 1) & 0x01;
-        out[o + 2] = (b >> 2) & 0x01;
-        out[o + 3] = (b >> 3) & 0x01;
-        out[o + 4] = (b >> 4) & 0x01;
-        out[o + 5] = (b >> 5) & 0x01;
-        out[o + 6] = (b >> 6) & 0x01;
-        out[o + 7] = (b >> 7) & 0x01;
-    }
-    out
-}
-
 /// Deserializes the given bitstring into a u16 array. Every element of the array has
 /// `bits_per_elem` bits (must be ≤ 13), encoded in the lower bits of the word.
 pub(crate) fn deserialize_generic<const N: usize>(bytes: &[u8], bits_per_elem: usize) -> [u16; N] {
@@ -125,50 +105,25 @@ pub(crate) fn serialize(data: &[u16], out_buf: &mut [u8], bits_per_elem: usize) 
     debug_assert_eq!(bits_in_window, 0);
 }
 
-#[cfg(test)]
-mod test {
+// The fast 10- and 13-bit paths must agree with the generic sliding-window deserializer.
+#[test]
+fn specialized_deser_matches_generic() {
     use rand::Rng;
+    let mut rng = rand::rng();
 
-    use super::*;
-
-    // The fast 13-bit path must agree with the generic sliding-window deserializer.
-    #[test]
-    fn deserialize_13_matches_generic() {
-        let mut bytes = [0u8; 13 * 256 / 8];
-        // Deterministic pseudo-random fill (no rng dep needed here).
-        let mut x: u32 = 0x9e3779b9;
-        for b in bytes.iter_mut() {
-            x = x.wrapping_mul(1664525).wrapping_add(1013904223);
-            *b = (x >> 24) as u8;
-        }
+    // Test deserialize_13
+    for _ in 0..100 {
+        let bytes: [u8; 13 * 256 / 8] = rng.random();
         let generic: [u16; 256] = deserialize_generic(&bytes, 13);
         let fast = deserialize_13(&bytes);
         assert_eq!(generic, fast);
     }
 
-    // The fast 10-bit path must agree with the generic sliding-window deserializer.
-    #[test]
-    fn deserialize_10_matches_generic() {
-        let mut bytes = [0u8; 10 * 256 / 8];
-        let mut x: u32 = 0x12345678;
-        for b in bytes.iter_mut() {
-            x = x.wrapping_mul(1664525).wrapping_add(1013904223);
-            *b = (x >> 24) as u8;
-        }
-
+    // Test deserialize_10
+    for _ in 0..100 {
+        let bytes: [u8; 10 * 256 / 8] = rng.random();
         let generic: [u16; 256] = deserialize_generic(&bytes, 10);
         let fast = deserialize_10(&bytes);
         assert_eq!(generic, fast);
-    }
-
-    // The fast 1-bit path must agree with the generic sliding-window deserializer.
-    #[test]
-    fn deserialize_1_matches_generic() {
-        for _ in 0..10 {
-            let bytes: [u8; 1 * 256 / 8] = rand::rng().random();
-            let generic: [u16; 256] = deserialize_generic(&bytes, 1);
-            let fast = deserialize_1(&bytes);
-            assert_eq!(generic, fast);
-        }
     }
 }
