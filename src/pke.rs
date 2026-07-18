@@ -23,6 +23,12 @@ pub(crate) struct PkeSecretKey<const L: usize>(Matrix<L, 1>);
 pub struct PkePublicKey<const L: usize> {
     matrix_seed: [u8; 32],
     vec: Matrix<L, 1>,
+    /// The public matrix A, expanded from `matrix_seed`. Cached here so that repeated
+    /// encryptions (e.g. every encapsulation and every FO re-encryption during decapsulation)
+    /// don't have to re-run the XOF that derives A from the seed. This mirrors the "unpacked"
+    /// public-key form used by other KEM implementations. It is never serialized: `serialize`
+    /// still writes only `vec || matrix_seed`, and `from_bytes` re-derives it.
+    mat_a: Matrix<L, L>,
 }
 
 impl<const L: usize> PkePublicKey<L> {
@@ -45,9 +51,12 @@ impl<const L: usize> PkePublicKey<L> {
 
         let (vec_bytes, seed) = bytes.split_at(Self::SERIALIZED_LEN - 32);
         let vec = Matrix::from_bytes(vec_bytes, MODULUS_P_BITS);
+        let matrix_seed: [u8; 32] = seed.try_into().expect("split_at(N-32).1 has len 32");
+        let mat_a = gen_matrix_from_seed::<L>(&matrix_seed);
         Self {
-            matrix_seed: seed.try_into().expect("split_at(N-32).1 has len 32"),
+            matrix_seed,
             vec,
+            mat_a,
         }
     }
 
@@ -119,6 +128,7 @@ pub(crate) fn expand_decap_key<const L: usize, const MU: usize>(
     let pk = PkePublicKey {
         matrix_seed: mat_seed,
         vec: b,
+        mat_a,
     };
     let pkh = pk.hash();
 
@@ -165,11 +175,10 @@ pub(crate) fn encrypt_deterministic<const L: usize, const MU: usize, const T: us
 ) {
     assert_eq!(out_buf.len(), ciphertext_len::<L, T>());
 
-    let mat_a = gen_matrix_from_seed::<L>(&pk.matrix_seed);
     let vec_sprime = gen_secret_from_seed::<L, MU>(coins);
 
     let bprime = {
-        let mut prod = mat_a.mul(&vec_sprime);
+        let mut prod = pk.mat_a.mul(&vec_sprime);
         prod.wrapping_add_to_all(H1_VAL);
         prod.shift_right(MODULUS_Q_BITS - MODULUS_P_BITS);
         prod

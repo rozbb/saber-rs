@@ -38,8 +38,19 @@ impl RingElem {
     /// In Saber terms, this runs BS2POLYk where k = bits_per_elem
     pub(crate) fn from_bytes(bytes: &[u8], bits_per_elem: usize) -> Self {
         assert_eq!(bytes.len(), bits_per_elem * RING_DEG / 8);
-        let arr = deserialize(bytes, bits_per_elem);
-        RingElem(arr)
+        // 13-bit unpacking (matrix / public-key expansion) is the hottest width, so it has a
+        // branchless fixed-shift specialization. Other widths use the generic sliding window.
+        if bits_per_elem == crate::consts::MODULUS_Q_BITS {
+            let arr: &[u8; 13 * RING_DEG / 8] =
+                bytes.try_into().expect("length checked above");
+            RingElem(crate::ser::deserialize_13(arr))
+        } else if bits_per_elem == crate::consts::MODULUS_P_BITS {
+            let arr: &[u8; 10 * RING_DEG / 8] =
+                bytes.try_into().expect("length checked above");
+            RingElem(crate::ser::deserialize_10(arr))
+        } else {
+            RingElem(deserialize(bytes, bits_per_elem))
+        }
     }
 
     /// Serializes this ring element, treating each coefficient as having only `bits_per_elem`
