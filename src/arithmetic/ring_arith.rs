@@ -3,7 +3,7 @@
 
 use crate::{
     consts::RING_DEG,
-    ser::{deserialize, serialize},
+    ser::{deserialize_generic, serialize},
 };
 
 use core::ops::{Add, Mul, Sub};
@@ -41,15 +41,13 @@ impl RingElem {
         // 13-bit unpacking (matrix / public-key expansion) is the hottest width, so it has a
         // branchless fixed-shift specialization. Other widths use the generic sliding window.
         if bits_per_elem == crate::consts::MODULUS_Q_BITS {
-            let arr: &[u8; 13 * RING_DEG / 8] =
-                bytes.try_into().expect("length checked above");
+            let arr: &[u8; 13 * RING_DEG / 8] = bytes.try_into().expect("length checked above");
             RingElem(crate::ser::deserialize_13(arr))
         } else if bits_per_elem == crate::consts::MODULUS_P_BITS {
-            let arr: &[u8; 10 * RING_DEG / 8] =
-                bytes.try_into().expect("length checked above");
+            let arr: &[u8; 10 * RING_DEG / 8] = bytes.try_into().expect("length checked above");
             RingElem(crate::ser::deserialize_10(arr))
         } else {
-            RingElem(deserialize(bytes, bits_per_elem))
+            RingElem(deserialize_generic(bytes, bits_per_elem))
         }
     }
 

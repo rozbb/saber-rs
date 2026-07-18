@@ -115,11 +115,9 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
         }
     }
 
-    /// Deserializes a matrix, ring element by ring element, treating each ring element coefficient
-    /// as having only `bits_per_elem` bits. In Saber terms, this runs BS2POLYVECk where k =
-    /// bits_per_elem
-    pub(crate) fn from_bytes(bytes: &[u8], bits_per_elem: usize) -> Self {
-        assert_eq!(bytes.len(), X * Y * bits_per_elem * RING_DEG / 8);
+    /// Deserializes a matrix of R10 values, element by element
+    pub(crate) fn r10s_from_bytes(bytes: &[u8]) -> Self {
+        debug_assert_eq!(bytes.len(), X * Y * 10 * RING_DEG / 8);
         let mut result = Matrix::default();
 
         /* More idiomatic version here. We have to use explicit indices because aeneas (the Lean
@@ -134,12 +132,12 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
              }
         }
         */
-        let chunk_len = bits_per_elem * RING_DEG / 8;
+        let chunk_len = 10 * RING_DEG / 8;
         for i in 0..X {
             for j in 0..Y {
                 let idx = i * Y + j;
                 let chunk = &bytes[idx * chunk_len..(idx + 1) * chunk_len];
-                result.0[i][j] = RingElem::from_bytes(chunk, bits_per_elem);
+                result.0[i][j] = RingElem::from_bytes(chunk, 10);
             }
         }
 

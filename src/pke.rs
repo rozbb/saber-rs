@@ -6,7 +6,7 @@ use crate::{
         DOMSEP_KGEXPAND, DOMSEP_PKHASH, MAX_L, MAX_T, MODULUS_P_BITS, MODULUS_Q_BITS, RING_DEG,
     },
     gen::{gen_matrix_from_seed, gen_secret_from_seed},
-    ser::deserialize,
+    ser::deserialize_generic,
     turboshake256_hash,
 };
 
@@ -50,7 +50,7 @@ impl<const L: usize> PkePublicKey<L> {
         assert_eq!(bytes.len(), Self::SERIALIZED_LEN);
 
         let (vec_bytes, seed) = bytes.split_at(Self::SERIALIZED_LEN - 32);
-        let vec = Matrix::from_bytes(vec_bytes, MODULUS_P_BITS);
+        let vec = Matrix::r10s_from_bytes(vec_bytes);
         let matrix_seed: [u8; 32] = seed.try_into().expect("split_at(N-32).1 has len 32");
         let mat_a = gen_matrix_from_seed::<L>(&matrix_seed);
         Self {
@@ -145,7 +145,7 @@ pub(crate) fn decrypt<const L: usize, const T: usize>(
     // b' is in R^l_P and c is in R_T
     let (bprime_bytes, c_bytes) = ciphertext.split_at(L * MODULUS_P_BITS * RING_DEG / 8);
 
-    let bprime: Matrix<L, 1> = Matrix::from_bytes(bprime_bytes, MODULUS_P_BITS);
+    let bprime: Matrix<L, 1> = Matrix::r10s_from_bytes(bprime_bytes);
 
     let mut c = RingElem::from_bytes(c_bytes, T);
     c.shift_left(MODULUS_P_BITS - T);
@@ -187,7 +187,7 @@ pub(crate) fn encrypt_deterministic<const L: usize, const MU: usize, const T: us
     let vprime: Matrix<1, 1> = pk.vec.mul_transpose(&vec_sprime);
     let vprime = vprime.0[0][0];
 
-    let mut msg_polyn = RingElem(deserialize(msg, 1));
+    let mut msg_polyn = RingElem(deserialize_generic(msg, 1));
     msg_polyn.shift_left(MODULUS_P_BITS - 1);
 
     // Compute v' - mp + h₁
