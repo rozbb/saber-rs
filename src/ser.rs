@@ -1,8 +1,8 @@
 //! Serialization and deserialization routines for ring elements
 
-/// Fast specialization of [`deserialize`] for the 13-bit case (matrix/公钥 expansion),
-/// which is by far the hottest width. Processes a whole 13-byte group into 8 coefficients
-/// with fixed shifts and no per-element branching, so it vectorizes well.
+/// Fast specialization of `deserialize` for the 13-bit case (matrix expansion), which is
+/// by far the hottest width. Processes a whole 13-byte group into 8 coefficients with
+/// fixed shifts and no per-element branching, so it vectorizes well.
 pub(crate) fn deserialize_13(bytes: &[u8; 13 * 256 / 8]) -> [u16; 256] {
     let mut out = [0u16; 256];
     // 256 coeffs = 32 groups of 8, each group packed into 13 bytes.
@@ -23,8 +23,9 @@ pub(crate) fn deserialize_13(bytes: &[u8; 13 * 256 / 8]) -> [u16; 256] {
     out
 }
 
-/// Fast specialization of [`deserialize`] for the 10-bit case (ciphertext/public-key vector
-/// unpacking). Processes a 5-byte group into 4 coefficients with fixed shifts.
+/// Fast specialization of `deserialize_generic` for the 10-bit case
+/// (ciphertext/public-key vector unpacking). Processes a 5-byte group into 4 coefficients
+/// with fixed shifts.
 pub(crate) fn deserialize_10(bytes: &[u8; 10 * 256 / 8]) -> [u16; 256] {
     let mut out = [0u16; 256];
     // 256 coeffs = 64 groups of 4, each group packed into 5 bytes.

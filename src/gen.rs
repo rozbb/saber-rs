@@ -93,7 +93,7 @@ pub(crate) fn gen_matrix_from_seed<const L: usize>(seed: &[u8; 32]) -> Matrix<L,
             hasher.update(&[j as u8]);
             let mut reader = hasher.finalize_xof();
             reader.read(&mut buf);
-            mat.0[i][j] = RingElem::from_bytes(&buf, MODULUS_Q_BITS);
+            mat.0[i][j] = RingElem::deserialize(&buf, MODULUS_Q_BITS);
         }
     }
 

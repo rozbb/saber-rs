@@ -35,16 +35,15 @@ impl RingElem {
     }
 
     /// Deserializes a ring element, treating each coefficient as having only `bits_per_elem` bits.
-    /// In Saber terms, this runs BS2POLYk where k = bits_per_elem
-    pub(crate) fn from_bytes(bytes: &[u8], bits_per_elem: usize) -> Self {
+    pub(crate) fn deserialize(bytes: &[u8], bits_per_elem: usize) -> Self {
         assert_eq!(bytes.len(), bits_per_elem * RING_DEG / 8);
-        // 13-bit unpacking (matrix / public-key expansion) is the hottest width, so it has a
-        // branchless fixed-shift specialization. Other widths use the generic sliding window.
+
+        // Specialize based on bits_per_elem. unwraps are okay because of the check aboev
         if bits_per_elem == crate::consts::MODULUS_Q_BITS {
-            let arr: &[u8; 13 * RING_DEG / 8] = bytes.try_into().expect("length checked above");
+            let arr: &[u8; 13 * RING_DEG / 8] = bytes.try_into().unwrap();
             RingElem(crate::ser::deserialize_13(arr))
         } else if bits_per_elem == crate::consts::MODULUS_P_BITS {
-            let arr: &[u8; 10 * RING_DEG / 8] = bytes.try_into().expect("length checked above");
+            let arr: &[u8; 10 * RING_DEG / 8] = bytes.try_into().unwrap();
             RingElem(crate::ser::deserialize_10(arr))
         } else {
             RingElem(deserialize_generic(bytes, bits_per_elem))
@@ -294,7 +293,7 @@ mod test {
 
     // Tests serialization and deserialization of ring elements
     #[test]
-    fn from_bytes() {
+    fn deserialize() {
         let mut rng = rng();
 
         // The largest buffer we'll need for the following tests. We make 2 because we need to
@@ -303,13 +302,13 @@ mod test {
         let mut backing_buf2 = [0u8; 16 * RING_DEG / 8];
 
         for _ in 0..1000 {
-            // Check that from_bytes matches the reference impl from_bytes for N=2^13,2^10,2^1
+            // Check that deserialize matches the reference impl deserialize for N=2^13,2^10,2^1
             let bits_per_elem = 13;
             let bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
             rng.fill_bytes(bytes);
             assert_eq!(
-                reference_impl_from_bytes_mod8192(&bytes),
-                RingElem::from_bytes(&bytes, 13)
+                saber_ref_from_bytes_mod8192(&bytes),
+                RingElem::deserialize(&bytes, 13)
             );
 
             // Now check it matches the reference to_bytes impl
@@ -324,16 +323,16 @@ mod test {
             let bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
             rng.fill_bytes(bytes);
             assert_eq!(
-                reference_impl_from_bytes_mod1024(&bytes).0,
-                RingElem::from_bytes(&bytes, 10).0,
+                saber_ref_from_bytes_mod1024(&bytes).0,
+                RingElem::deserialize(&bytes, 10).0,
             );
 
             let bits_per_elem = 1;
             let bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
             rng.fill_bytes(bytes);
             assert_eq!(
-                reference_impl_from_bytes_mod2(&bytes).0,
-                RingElem::from_bytes(&bytes, 1).0,
+                saber_ref_from_bytes_mod2(&bytes).0,
+                RingElem::deserialize(&bytes, 1).0,
             );
 
             // Now check it matches the reference to_bytes impl
@@ -343,7 +342,7 @@ mod test {
             let my_bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
             let ref_bytes = &mut backing_buf2[..bits_per_elem * RING_DEG / 8];
             elem.serialize(my_bytes, bits_per_elem);
-            reference_impl_to_bytes_mod2(&elem, ref_bytes);
+            saber_ref_to_bytes_mod2(&elem, ref_bytes);
             assert_eq!(my_bytes, ref_bytes);
 
             // Now check that to_bytes and from_bytes are inverses
@@ -360,12 +359,12 @@ mod test {
                 // Check that a round trip preserves the polynomial
                 let p_bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
                 p.serialize(p_bytes, bits_per_elem);
-                assert_eq!(p, RingElem::from_bytes(&p_bytes, bits_per_elem));
+                assert_eq!(p, RingElem::deserialize(&p_bytes, bits_per_elem));
 
                 // Now other way around
                 let p_bytes = &mut backing_buf1[..bits_per_elem * RING_DEG / 8];
                 rng.fill_bytes(p_bytes);
-                let p = RingElem::from_bytes(&p_bytes, bits_per_elem);
+                let p = RingElem::deserialize(&p_bytes, bits_per_elem);
                 let new_p_bytes = &mut backing_buf2[..bits_per_elem * RING_DEG / 8];
                 p.serialize(new_p_bytes, bits_per_elem);
                 assert_eq!(p_bytes, new_p_bytes);
@@ -375,7 +374,7 @@ mod test {
 
     /// A nearly verbatim copy of the C reference impl of BS2POL_N where N = 2^13
     /// https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/pack_unpack.c#L101
-    fn reference_impl_from_bytes_mod8192(b: &[u8]) -> RingElem {
+    fn saber_ref_from_bytes_mod8192(b: &[u8]) -> RingElem {
         let mut offset_byte;
         let mut offset_data;
         let mut poly = RingElem::default();
@@ -414,7 +413,7 @@ mod test {
 
     /// A nearly verbatim copy of the C reference impl of BS2POL_N where N = 2^10
     /// https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/pack_unpack.c#L134
-    fn reference_impl_from_bytes_mod1024(b: &[u8]) -> RingElem {
+    fn saber_ref_from_bytes_mod1024(b: &[u8]) -> RingElem {
         let mut offset_byte;
         let mut offset_data;
         let mut poly = RingElem::default();
@@ -474,7 +473,7 @@ mod test {
 
     /// A nearly verbatim copy of the C reference impl of BS2POL_N where N = 2
     /// https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/pack_unpack.c#L184
-    fn reference_impl_from_bytes_mod2(b: &[u8]) -> RingElem {
+    fn saber_ref_from_bytes_mod2(b: &[u8]) -> RingElem {
         let mut poly = RingElem::default();
         let data = &mut poly.0;
 
@@ -494,7 +493,7 @@ mod test {
 
     /// A nearly verbatim copy of the C reference impl of POL2BS_N where N = 2
     /// https://github.com/KULeuven-COSIC/SABER/blob/f7f39e4db2f3e22a21e1dd635e0601caae2b4510/Reference_Implementation_KEM/pack_unpack.c#L196
-    fn reference_impl_to_bytes_mod2(polyn: &RingElem, bytes: &mut [u8]) {
+    fn saber_ref_to_bytes_mod2(polyn: &RingElem, bytes: &mut [u8]) {
         let data = polyn.0;
 
         for j in 0..32 {

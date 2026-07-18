@@ -50,8 +50,8 @@ impl<const L: usize> PkePublicKey<L> {
         assert_eq!(bytes.len(), Self::SERIALIZED_LEN);
 
         let (vec_bytes, seed) = bytes.split_at(Self::SERIALIZED_LEN - 32);
-        let vec = Matrix::from_bytes_r10(vec_bytes);
-        let matrix_seed: [u8; 32] = seed.try_into().expect("split_at(N-32).1 has len 32");
+        let vec = Matrix::deserialize_10(vec_bytes);
+        let matrix_seed: [u8; 32] = seed.try_into().unwrap(); // checked above
         let mat_a = gen_matrix_from_seed::<L>(&matrix_seed);
         Self {
             matrix_seed,
@@ -145,9 +145,9 @@ pub(crate) fn decrypt<const L: usize, const T: usize>(
     // b' is in R^l_P and c is in R_T
     let (bprime_bytes, c_bytes) = ciphertext.split_at(L * MODULUS_P_BITS * RING_DEG / 8);
 
-    let bprime: Matrix<L, 1> = Matrix::from_bytes_r10(bprime_bytes);
+    let bprime: Matrix<L, 1> = Matrix::deserialize_10(bprime_bytes);
 
-    let mut c = RingElem::from_bytes(c_bytes, T);
+    let mut c = RingElem::deserialize(c_bytes, T);
     c.shift_left(MODULUS_P_BITS - T);
 
     let v = bprime.mul_transpose(&sk.0);

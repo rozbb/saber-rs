@@ -116,7 +116,7 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
     }
 
     /// Deserializes a matrix of R10 values, element by element
-    pub(crate) fn from_bytes_r10(bytes: &[u8]) -> Self {
+    pub(crate) fn deserialize_10(bytes: &[u8]) -> Self {
         debug_assert_eq!(bytes.len(), X * Y * 10 * RING_DEG / 8);
         let mut result = Matrix::default();
 
@@ -128,7 +128,7 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
                 let chunk = chunk_iter
                     .next()
                     .expect("length check at beginning ensures X*Y many chunks");
-                *entry = RingElem::from_bytes(chunk, bits_per_elem);
+                *entry = RingElem::deserialize(chunk, bits_per_elem);
              }
         }
         */
@@ -137,7 +137,7 @@ impl<const X: usize, const Y: usize> Matrix<X, Y> {
             for j in 0..Y {
                 let idx = i * Y + j;
                 let chunk = &bytes[idx * chunk_len..(idx + 1) * chunk_len];
-                result.0[i][j] = RingElem::from_bytes(chunk, 10);
+                result.0[i][j] = RingElem::deserialize(chunk, 10);
             }
         }
 
